@@ -1,0 +1,18 @@
+node_modules/
+dist/
+*.log
+
+# local agent config and skills
+.claude/
+
+# local box credentials, never commit
+.env
+.env.*
+!.env.example
+
+# local audit notes, not part of the package
+AUDIT.md
+AUDIT-RAW.md
+AUDIT-PROGRESS.md
+AUDIT-FLOW.md
+AUDIT-TODO.md

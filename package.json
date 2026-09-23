@@ -1,0 +1,60 @@
+{
+  "name": "ibm-i-5250-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that drives IBM i 5250 green screens, the way Playwright MCP drives web pages",
+  "type": "module",
+  "bin": {
+    "ibm-i-5250-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "screen-tests",
+    ".env.example",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "npm run build && node --test dist/selfcheck.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ibm-i",
+    "as400",
+    "iseries",
+    "5250",
+    "tn5250",
+    "green-screen",
+    "rpg",
+    "dspf",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SH4RKKK/ibm-i-5250-mcp.git"
+  },
+  "homepage": "https://github.com/SH4RKKK/ibm-i-5250-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/SH4RKKK/ibm-i-5250-mcp/issues"
+  },
+  "author": "Saman",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.19.0",
+    "dotenv": "^16.4.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
