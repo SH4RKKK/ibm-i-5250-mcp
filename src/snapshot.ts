@@ -76,7 +76,7 @@ function describe(f: Field, screen: ScreenBuffer): string {
   return `  [${f.id}] ${pos} len ${String(f.length).padStart(3)}  ${kind}  ${value}${flags ? "  " + flags : ""}`;
 }
 
-export function renderSnapshot(screen: ScreenBuffer): string {
+export function renderSnapshot(screen: ScreenBuffer, stack: string[] = [], window?: string): string {
   // Never a name: nothing on the wire carries one.
   const sig = structuralSignature(screen);
   const out: string[] = [
@@ -87,6 +87,11 @@ export function renderSnapshot(screen: ScreenBuffer): string {
   ];
   const msg = messageLine(screen);
   if (msg) out.push(`message: ${msg}`);
+  if (window) out.push(`window: ${window}, drawn over this screen rather than a screen of its own`);
+  if (stack.length) {
+    out.push("stack (the screens behind this one, nearest first):");
+    for (const l of stack) out.push(`  ${l}`);
+  }
   out.push("");
 
   // Blank rows dropped, real row numbers kept.

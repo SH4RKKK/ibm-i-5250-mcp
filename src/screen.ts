@@ -2,7 +2,7 @@
 // current screen, built by walking a Write To Display order stream.
 
 import { decode, DEFAULT_CCSID } from "./ebcdic.js";
-import { ATTR_GREEN, CC2, CMD, ESC, FFW, GDS, isAttribute, isNondisplay, ORDER, SHIFT, attrOf, type Attr, type Shift } from "./codes.js";
+import { ATTR_GREEN, CC2, CMD, CMD_NAMES, ESC, FFW, GDS, isAttribute, isNondisplay, ORDER, SHIFT, attrOf, type Attr, type Shift } from "./codes.js";
 
 export interface Field {
   id: string;              // f1, f2, ... stable within one screen, the model's handle
@@ -28,9 +28,14 @@ export interface ParsedRecord {
   saveScreenRequested: boolean; // host asked for the screen back and is waiting
   readScreenRequested: boolean; // Read Screen Immediate: the host wants the buffer, not the operator
   readFieldsRequested: boolean; // Read Immediate: the host wants the MDT fields, not the operator
+  trace: string[];              // how the host drew it, never what it drew
 }
 
 const NULL_CELL = 0x00;
+
+// A truncated record reads undefined past its end, and a throw here would drop the whole record.
+const hex = (...bytes: (number | undefined)[]) =>
+  bytes.map((b) => (b === undefined ? "--" : b.toString(16).padStart(2, "0"))).join(" ");
 
 const OPERANDS: Record<number, number> = {
   [ORDER.SBA]: 2,
@@ -58,6 +63,7 @@ export class ScreenBuffer {
 
   private pos = 0;
   private seq = 0;
+  private errorRow = 0; // from the Start of Header, 0 until one arrives
   private paint!: Uint32Array; // per cell, the record that last wrote it
   private curAttr: number = ATTR_GREEN;
   private definedHere: Field[] = []; // fields the record being applied defined, for the cursor default
@@ -90,6 +96,7 @@ export class ScreenBuffer {
     this.chars.fill(NULL_CELL);
     this.attrs.fill(ATTR_GREEN);
     this.fields = [];
+    this.errorRow = 0;
     this.pos = 0;
     this.curAttr = ATTR_GREEN;
     this.cursorRow = 1;
@@ -98,6 +105,12 @@ export class ScreenBuffer {
 
   clearFormatTable() {
     this.fields = []; // leaves the pixels: this is how a repaint keeps its layout
+    this.errorRow = 0;
+  }
+
+  // As tn5250 reads it: a row past the screen, which IBM i sends on a 27 row display, means the last.
+  private messageRow(): number {
+    return this.errorRow >= 1 && this.errorRow <= this.rows ? this.errorRow : this.rows;
   }
 
   // Hidden fields are masked for live view, logs, snapshots
@@ -214,6 +227,7 @@ export class ScreenBuffer {
       saveScreenRequested: false,
       readScreenRequested: false,
       readFieldsRequested: false,
+      trace: [],
     };
 
     while (i < record.length) {
@@ -223,6 +237,7 @@ export class ScreenBuffer {
       }
       const cmd = record[i + 1];
       out.commands.push(cmd);
+      out.trace.push(CMD_NAMES[cmd] ?? hex(cmd));
       i = this.applyCommand(cmd, record, i + 2, out);
     }
 
@@ -254,6 +269,7 @@ export class ScreenBuffer {
         return i;
 
       case CMD.WRITE_TO_DISPLAY: {
+        out.trace[out.trace.length - 1] += ` ${hex(r[i], r[i + 1])}`;
         const cc2 = r[i + 1];
         if (cc2 & CC2.UNLOCK_KEYBOARD) out.unlockedKeyboard = true;
         if (cc2 & CC2.SOUND_ALARM) out.soundAlarm = true;
@@ -261,9 +277,15 @@ export class ScreenBuffer {
         return this.applyOrders(r, i + 2, out);
       }
 
+      // The error text goes on the message row whatever the last write left the position at.
       case CMD.WRITE_ERROR_CODE:
-      case CMD.WRITE_ERROR_CODE_WINDOW:
+        this.pos = this.idx(this.messageRow(), 1);
         return this.applyOrders(r, i, out);
+
+      // The two window columns are read past, not used: tn5250 writes the text the same way.
+      case CMD.WRITE_ERROR_CODE_WINDOW:
+        this.pos = this.idx(this.messageRow(), 1);
+        return this.applyOrders(r, i + 2, out);
 
       case CMD.READ_INPUT_FIELDS:
       case CMD.READ_MDT_FIELDS:
@@ -282,6 +304,7 @@ export class ScreenBuffer {
       case CMD.WRITE_STRUCTURED_FIELD:
         // <length 2 bytes> <class> <type>. Class 0xD9 type 0x70 is the 5250 Query: the host is
         // asking the terminal to describe itself and will not proceed until answered.
+        out.trace[out.trace.length - 1] += ` ${hex(r[i + 2], r[i + 3])}`;
         if (r[i + 2] === 0xd9 && r[i + 3] === 0x70) out.queryRequested = true;
         return this.skipToNextEsc(r, i);
 
@@ -310,7 +333,13 @@ export class ScreenBuffer {
       if (operands !== undefined && i + operands >= r.length) return r.length;
 
       switch (b) {
+        // A header opens a new set of input fields, so it empties the format table as tn5250 does.
+        // Without that, a format written over another without a clear keeps the old one's fields.
         case ORDER.SOH:
+          out.trace.push(`header ${hex(...r.subarray(i + 2, i + 2 + r[i + 1]))}`);
+          this.fields = [];
+          this.definedHere = [];
+          this.errorRow = r[i + 1] >= 4 ? (r[i + 5] ?? 0) : 0;
           i += 2 + r[i + 1];
           continue;
 
@@ -347,6 +376,7 @@ export class ScreenBuffer {
           continue;
 
         case ORDER.WDSF:
+          out.trace.push(`wdsf ${hex(r[i + 3], r[i + 4])}`);
           i += 1 + Math.max(2, (r[i + 1] << 8) | r[i + 2]);
           continue;
 

@@ -1,10 +1,9 @@
 # The sign on lands on a menu with a command line
 
 A worked example of the format, and a real test: it proves a session comes up
-where the profile says it should. Copy it as a starting point and change the
-screen titles, which are whatever your box's language calls them. The ones here
-are from a Dutch box, so `Hoofdmenu` is the main menu and `OPDRACHTEN OPGEVEN`
-is Command Entry.
+where the profile says it should. Copy it as a starting point. The screen titles
+here are the English ones, so change them to whatever your box's language calls
+them.
 
 Everything outside a fenced block is ignored. The heading becomes the test name.
 
@@ -14,7 +13,7 @@ the screen that is already there.
 
 ```5250-expect
 keyboard: unlocked
-text: Hoofdmenu
+text: Main Menu
 ```
 
 `fields` counts input fields only. A menu has one, its command line, so this
@@ -39,7 +38,7 @@ guards against the thing that should not be there, so translate it too, or it
 passes for the wrong reason.
 
 ```5250-expect
-text: OPDRACHTEN OPGEVEN
+text: Command Entry
 not text: Attempt to Recover
 message: none
 ```
@@ -52,7 +51,7 @@ key: F3
 ```
 
 ```5250-expect
-text: Hoofdmenu
+text: Main Menu
 ```
 
 ## What else you can write
@@ -68,7 +67,7 @@ the operator which field it rejected.
 `message: none` checks there is no message at all. It needs a real IBM i
 message id, so a program that writes plain text with no id will not match.
 
-`signature: ca040eee10bd` pins the structural signature, which is the geometry
+`signature: 8156d875c512` pins the structural signature, which is the geometry
 of the input fields hashed, so it survives changing data, dates and names. Use
 it as a tripwire, not as the meaning of a test: when it fails it tells you the
 screen changed and nothing whatsoever about how. The readable assertions above

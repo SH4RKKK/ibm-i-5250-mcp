@@ -43,7 +43,9 @@ Say you ask: "open order entry on PROD, put the cursor on the fifth line and del
      [f1] 18,7    len 313  INPUT  ""
    ```
 
-   Blank rows are dropped and real row numbers kept.
+   Blank rows are dropped and real row numbers kept. The snapshot also lists the stack: the screens
+   behind this one, nearest first, which is usually where F3 and F12 lead back to. An open window is
+   named on a line of its own rather than added as a screen.
 4. `screen_do(actions: ["cursor: 6,2", "key: F2"])` opens the confirmation window the program paints.
    The snapshot now carries the window's field, and the cursor is inside it.
 5. `screen_do(actions: ["type f23: Y", "key: Enter"])` answers it.
@@ -54,7 +56,10 @@ Say you ask: "open order entry on PROD, put the cursor on the fifth line and del
 
 Set `IBMI_5250_VIEWER=true` to turn it on. `session_open` then starts a small page on your machine
 and returns its URL. Open it once and watch the green screen repaint as the agent works, in the real
-5250 colours, with the cursor and keyboard state.
+5250 colours, with the cursor and keyboard state. Under it is the screen stack: the screens behind
+this one, nearest first, like a stack of cards, and clicking one shows it as it was. Below that is a
+history, closed until you open it, with arrows to step back and forward through the screens before
+this one, one for each key the agent pressed.
 
 The page is non interactive, so it is there to watch and nothing more. It runs on
 `http://127.0.0.1:5250`, or whatever port you set in `IBMI_5250_VIEWER_PORT`, and the URL carries a
@@ -144,6 +149,7 @@ when the same name is in both.
 | `IBMI_5250_TLS_INSECURE` | no | `false` | accept any certificate on 992, self signed included |
 | `IBMI_5250_VIEWER` | no | `false` | `true` starts the live view |
 | `IBMI_5250_VIEWER_PORT` | no | `5250` | falls back to a free port when this one is busy |
+| `IBMI_5250_TRACE` | no | `false` | `true` adds what the host sent for each key to the snapshot and the live view history |
 | `IBMI_5250_CURLIB` | no | | typed into Current library at sign on |
 | `IBMI_5250_PROGRAM` | no | | typed into Program/procedure at sign on |
 | `IBMI_5250_MENU` | no | | typed into Menu at sign on |

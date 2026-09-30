@@ -20,6 +20,28 @@ export const CMD = {
   WRITE_STRUCTURED_FIELD: 0xf3,
 } as const;
 
+// For the wire trace. Also names commands the parser skips, since whether IBM i sends them is what
+// the trace is for.
+export const CMD_NAMES: Record<number, string> = {
+  [CMD.CLEAR_UNIT]: "clear unit",
+  [CMD.CLEAR_UNIT_ALTERNATE]: "clear unit alternate",
+  [CMD.CLEAR_FORMAT_TABLE]: "clear format table",
+  [CMD.WRITE_TO_DISPLAY]: "write",
+  [CMD.WRITE_ERROR_CODE]: "write error",
+  [CMD.WRITE_ERROR_CODE_WINDOW]: "write error in window",
+  [CMD.READ_INPUT_FIELDS]: "read input",
+  [CMD.READ_MDT_FIELDS]: "read mdt",
+  [CMD.READ_MDT_FIELDS_ALT]: "read mdt alt",
+  [CMD.READ_SCREEN_IMMEDIATE]: "read screen",
+  [CMD.READ_IMMEDIATE]: "read immediate",
+  [CMD.SAVE_SCREEN]: "save screen",
+  0x03: "save partial screen",
+  0x12: "restore screen",
+  0x13: "restore partial screen",
+  0x23: "roll",
+  [CMD.WRITE_STRUCTURED_FIELD]: "structured field",
+};
+
 // A read means the host has stopped painting and is waiting for input,
 // which is the definitive readiness signal session.ts settles on.
 export const READ_CMDS = new Set<number>([

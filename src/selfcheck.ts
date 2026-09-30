@@ -11,9 +11,10 @@ import { decode, encode } from "./ebcdic.js";
 import { assertCommandAllowed } from "./guard.js";
 import { KEY_TO_AID, AID, CMD, ESC, FFW, ORDER, attrName, attrOf } from "./codes.js";
 import { buildInbound, buildQueryReply, buildSaveScreenReply } from "./inbound.js";
-import { renderFrame } from "./render.js";
+import { MAX_STEPS, renderFrame } from "./render.js";
 import { formatSuite, parseTest } from "./testrun.js";
 import { lastPaintedRow, messageLine, renderSnapshot } from "./snapshot.js";
+import { ScreenStack, screenKey, windowTitle } from "./stack.js";
 
 // dist/selfcheck.js -> project root -> test/fixtures
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,6 +52,8 @@ test("parses a real sign on record into the right screen", () => {
 
   // clear unit, write to display, read mdt fields
   assert.deepEqual(p.commands, [0x40, 0x11, 0x52]);
+  // 0x18 in the header is row 24, the error row.
+  assert.deepEqual(p.trace, ["clear unit", "write 00 18", "header 00 00 00 18 00 00 00", "read mdt"]);
   assert.equal(p.unlockedKeyboard, true);
   assert.equal(s.keyboardLocked, false);
 
@@ -125,10 +128,10 @@ test("attribute bytes occupy a cell and render blank, keeping columns aligned", 
   assert.equal(s.line(1)[21], " ");
 });
 
-test("EBCDIC round trips, including the Dutch diaeresis in the real DSPF", () => {
+test("EBCDIC round trips", () => {
   assert.equal(decode([0xe2, 0x89, 0x87, 0x95, 0x40, 0xd6, 0x95], 37), "Sign On");
   assert.equal(decode([0xd8, 0xc9, 0xd5, 0xe3, 0xc5, 0xd9], 37), "QINTER");
-  assert.equal(decode(encode("Soort patiënt", 37), 37), "Soort patiënt");
+  assert.equal(decode(encode("Hello world", 37), 37), "Hello world");
   // Unmappable characters become "?" rather than vanishing, which would shift every later column.
   assert.equal(decode(encode("a中b", 37), 37), "a?b");
 });
@@ -367,11 +370,11 @@ test("a command line is told from a business field by the ===> prompt, not by wi
     ).commandLine();
 
   assert.ok(found("  ===>", 7, 153), "a prompted command line");
-  assert.ok(found("  Opmerking", 12, 313), "IBM's own width, prompt or no prompt");
-  assert.equal(found("  Opmerking", 12, 60), undefined, "a wide remark field is not a command line");
-  assert.equal(found("  Optie:", 9, 2), undefined, "nor is a menu option field");
+  assert.ok(found("  Remark", 12, 313), "IBM's own width, prompt or no prompt");
+  assert.equal(found("  Remark", 12, 60), undefined, "a wide remark field is not a command line");
+  assert.equal(found("  Option:", 9, 2), undefined, "nor is a menu option field");
   // The prompt has to sit before the field, or every field on the row inherits it.
-  assert.equal(found("  Naam           ===>", 7, 60), undefined, "a prompt to the right is not ours");
+  assert.equal(found("  Name           ===>", 7, 60), undefined, "a prompt to the right is not ours");
 });
 
 test("a menu with no command line signs off through its own numbered option", () => {
@@ -383,10 +386,10 @@ test("a menu with no command line signs off through its own numbered option", ()
       }) as Session
     ).signOffOption();
 
-  assert.equal(option(["  80. Ontwikkelomgeving", "  90. Afmelden", "Optie:"], 2)?.option, "90");
+  assert.equal(option(["  80. Development", "  90. Sign off", "Option:"], 2)?.option, "90");
   assert.equal(option(["  12. Sign Off"], 2)?.option, "12", "read off the screen, not assumed to be 90");
-  assert.equal(option(["  90. Afmelden"], 1), undefined, "a field too short to hold the number");
-  assert.equal(option(["  90. Andere keuze"], 2), undefined, "a menu that offers no sign off");
+  assert.equal(option(["  90. Sign off"], 1), undefined, "a field too short to hold the number");
+  assert.equal(option(["  90. Other choices"], 2), undefined, "a menu that offers no sign off");
 });
 
 
@@ -436,7 +439,7 @@ test("parseTest keeps a trailing blank in typed text but not a leading one", () 
 });
 
 test("an expect block with no preceding do block checks the screen already there", () => {
-  const t = parseTest(["```5250-expect", "text: Hoofdmenu", "```"].join("\n"), "t.md");
+  const t = parseTest(["```5250-expect", "text: Main Menu", "```"].join("\n"), "t.md");
   assert.equal(t.steps.length, 1);
   assert.equal(t.steps[0].actions.length, 0);
   assert.equal(t.steps[0].expectations.length, 1);
@@ -637,6 +640,7 @@ test("a read command is the readiness signal, so settle does not pay the quiet p
     profile: { ccsid: 37, terminalType: "IBM-3477-FC" },
     lastReply: "",
     recordCount: 0,
+    exchange: [],
     emit: () => true,
   });
 
@@ -677,6 +681,126 @@ test("the live view is gated by a per session token, not just the Host header", 
   for (const url of ["/", "/events", "/?t=", "/?t=deadbeef", `/?t=${tokenOf(b)}`]) {
     assert.equal(gate(a, url), false, url);
   }
+});
+
+test("the stack pushes new screens, keeps updates, pops on return and leaves windows out", () => {
+  const painted = (rows: Record<number, string>) => {
+    const s = new ScreenBuffer(24, 80, 37);
+    for (const [r, text] of Object.entries(rows)) enc(text.padEnd(80)).copy(s.chars, (Number(r) - 1) * 80);
+    return s;
+  };
+  // IBM help draws its window as a full repaint, with only the border to say so.
+  const help = (title: string) => ({
+    1: "MAIN          IBM i Main Menu",
+    2: " " + ".".repeat(78),
+    3: " :" + `   ${title}`.padEnd(76) + ":",
+    4: " :" + "".padEnd(76) + ":",
+    5: " :" + ".".repeat(76) + ":",
+  });
+  const main = painted({ 1: "MAIN          IBM i Main Menu", 2: "                     System:   MYBOX1" });
+  const menu = (time: string) => painted({ 1: `  ORD000   ORDERS     01-02-2026  ${time}`, 5: "  1. Order entry" });
+  const sub = painted({ 1: "  ORD010   ORDERS Test   01-02-2026  09:15" });
+
+  const st = new ScreenStack();
+  st.reset(main);
+  assert.equal(st.observe(menu("09:15")), "new");
+  assert.equal(st.observe(menu("09:16")), "update", "a new time is the same screen");
+  assert.equal(st.observe(sub), "new");
+  // This screen is what the reader is looking at, so only the ones behind it are listed.
+  assert.deepEqual(st.lines(), ["1. ORD000 ORDERS", "2. MAIN IBM i Main Menu System: MYBOX1"],
+    "nearest first, without dates and times");
+
+  assert.equal(st.observe(painted(help("Main Menu - Help"))), "window");
+  assert.equal(st.lines().length, 2, "a window is marked, not stacked");
+  assert.equal(st.windowOnTop, "Main Menu - Help");
+  assert.equal(st.observe(sub), "update", "closing the window lands on the same screen");
+  assert.equal(st.windowOnTop, undefined);
+
+  assert.equal(st.observe(main), "back", "F3 twice at once still lands on the right entry");
+  assert.deepEqual(st.lines(), [], "nothing behind the first screen");
+
+  assert.equal(windowTitle(painted({ 3: "  Library . . . . . . . . . . .   QGPL" })), undefined, "a dotted leader is not a border");
+
+  const typed = painted({ 1: "Work with things" });
+  typed.fields = [field({ row: 2, col: 10, length: 10 })];
+  const blank = screenKey(typed);
+  typed.typeInto(typed.fields[0], "ACME", enc);
+  assert.equal(screenKey(typed), blank, "typed text is not part of what identifies a screen");
+});
+
+// SBA to the cell before the field, since Start Field writes the attribute there.
+const sf = (row: number, col: number, len: number) =>
+  [ORDER.SBA, row, col - 1, ORDER.SF, FFW.PRESENT, 0x00, 0x20, 0, len];
+const header = (errorRow: number) => [ORDER.SOH, 7, 0, 0, 0, errorRow, 0, 0, 0];
+
+test("a header drops the fields of the format it replaces, as tn5250 does", () => {
+  // A selection screen back to the list it filters: writes only, no clear, and a header.
+  const s = new ScreenBuffer(24, 80, 37);
+  s.apply(gds(ESC, CMD.WRITE_TO_DISPLAY, 0, 0, ...sf(5, 14, 8), ...sf(8, 40, 30)));
+  s.apply(gds(ESC, CMD.WRITE_TO_DISPLAY, 0, 0, ...header(0x19), ...sf(5, 2, 1), ...sf(6, 2, 1)));
+  assert.deepEqual(s.fields.map((f) => [f.row, f.col, f.length]), [[5, 2, 1], [6, 2, 1]]);
+  assert.equal(s.fields.filter((f) => s.covered(f)).length, 0, "nothing left to report as under a window");
+});
+
+test("an error message goes on the header's error row, or the last row when that is off screen", () => {
+  const onRow = (errorRow: number) => {
+    const s = new ScreenBuffer(24, 80, 37);
+    s.apply(gds(ESC, CMD.WRITE_TO_DISPLAY, 0, 0, ...header(errorRow)));
+    s.apply(gds(ESC, CMD.WRITE_ERROR_CODE, ...enc("CPD9999 key not allowed")));
+    return s.lines().findIndex((l) => l.startsWith("CPD9999")) + 1;
+  };
+  assert.equal(onRow(22), 22);
+  // IBM i sent rows plus one, 25 here and 28 on a 27 row display, and the message landed nowhere.
+  assert.equal(onRow(25), 24);
+  assert.equal(onRow(0), 24);
+});
+
+test("the stack view keeps each screen as it was on top and forgets popped ones", () => {
+  const v = new Viewer("t");
+  const writes: string[] = [];
+  v["clients"].add({ write: (w: string) => writes.push(w) } as never);
+  const at = (text: string) => {
+    const s = new ScreenBuffer(24, 80, 37);
+    enc(text).copy(s.chars, 0);
+    return s;
+  };
+  const a = { key: "a", title: "MAIN" };
+  const b = { key: "b", title: "ORD000" };
+
+  v.stackMoved(at("MAIN MENU"), [a]);
+  v.stackMoved(at("ORD000 MENU"), [a, b]);
+  const last = () => JSON.parse(writes[writes.length - 1].split("data: ")[1]);
+  assert.deepEqual(last().entries.map((e: { title: string }) => e.title), ["MAIN", "ORD000"]);
+  assert.match(last().entries[0].rows, /MAIN MENU/, "the entry below keeps its own screen");
+  assert.match(last().entries[1].rows, /ORD000 MENU/);
+
+  v.stackMoved(at("MAIN MENU AGAIN"), [a]);
+  assert.equal(v["stackFrames"].size, 1, "a popped screen's frame goes with it");
+  assert.match(last().entries[0].rows, /MAIN MENU AGAIN/);
+});
+
+test("a page that connects gets the history, oldest first and capped, then the live screen", () => {
+  const s = new ScreenBuffer(24, 80, 37);
+  const connect = (v: Viewer) => {
+    const written: string[] = [];
+    const res = { writeHead() {}, flushHeaders() {}, on() {}, write: (w: string) => written.push(w) };
+    v["stream"](res as never);
+    return written.map((w) =>
+      w.startsWith("event: step\n") ? JSON.parse(w.slice(w.indexOf("data: ") + 6)).label : "live",
+    );
+  };
+
+  const v = new Viewer("t");
+  v.step(s, "signed on");
+  v.step(s, "Enter");
+  v.update(s);
+  assert.deepEqual(connect(v), ["signed on", "Enter", "live"]);
+
+  const full = new Viewer("t");
+  for (let i = 0; i <= MAX_STEPS; i++) full.step(s, String(i));
+  const replay = connect(full);
+  assert.equal(replay.length, MAX_STEPS);
+  assert.equal(replay[0], "1", "the oldest step is the one dropped");
 });
 
 

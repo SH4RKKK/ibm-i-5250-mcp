@@ -8,6 +8,7 @@ import { assertCommandAllowed } from "./guard.js";
 import { buildInbound, buildQueryReply, buildReadScreenReply, buildSaveScreenReply } from "./inbound.js";
 import { ScreenBuffer, type Field, type ParsedRecord } from "./screen.js";
 import { lastPaintedRow, messageLine } from "./snapshot.js";
+import { ScreenStack, type Move } from "./stack.js";
 import { Telnet5250Connection } from "./telnet.js";
 import { NOOP_REPORTER, type Profile, type Reporter } from "./types.js";
 
@@ -31,6 +32,9 @@ export class Session extends EventEmitter {
   private recordCount = 0;
   private lastReadWasAllFields = false;
   private closed = false;
+  exchange: string[] = []; // the trace of each record since the last key, see ParsedRecord.trace
+  readonly stack = new ScreenStack();
+  lastMove?: Move;
 
   constructor(readonly profile: Profile) {
     super();
@@ -57,9 +61,11 @@ export class Session extends EventEmitter {
     } catch (e) {
       // Only the parse is wrapped, so a throw from a screen listener is not swallowed as one.
       console.error(`[ibm-i-5250] unparseable 5250 record: ${(e as Error).message}`);
+      this.exchange.push("unparseable");
       return;
     }
 
+    this.exchange.push(parsed.trace.join(", "));
     if (parsed.commands.some((c) => READ_CMDS.has(c))) this.sawRead = true;
     if (parsed.commands.includes(CMD.READ_INPUT_FIELDS)) this.lastReadWasAllFields = true;
     else if (parsed.commands.includes(CMD.READ_MDT_FIELDS) || parsed.commands.includes(CMD.READ_MDT_FIELDS_ALT)) {
@@ -185,6 +191,7 @@ export class Session extends EventEmitter {
   }
 
   async pressKey(key: string, reporter: Reporter = NOOP_REPORTER): Promise<void> {
+    this.exchange = [];
     const name = normaliseKey(key);
     const aid = KEY_TO_AID[name];
     if (aid === undefined) {
@@ -201,6 +208,8 @@ export class Session extends EventEmitter {
     this.restartSettle();
     this.conn.sendRecord(record);
     await this.settle(`the response to ${key}`);
+    this.lastMove = this.stack.observe(this.screen);
+    this.emit("moved");
   }
 
   async signOn(reporter: Reporter = NOOP_REPORTER): Promise<void> {
@@ -244,6 +253,9 @@ export class Session extends EventEmitter {
         await this.pressKey("Enter", reporter);
         continue; // the application screen is behind it
       }
+      // Sign on and recovery are not where the user is, so the stack starts here.
+      this.stack.reset(this.screen);
+      this.emit("moved");
       return;
     }
     throw new Error("could not reach an application screen after three attempts (sign on and recovery kept repeating)");

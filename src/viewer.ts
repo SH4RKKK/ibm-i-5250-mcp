@@ -3,13 +3,17 @@
 import http from "node:http";
 import { randomBytes } from "node:crypto";
 import type { ScreenBuffer } from "./screen.js";
-import { renderFrame, viewerPage } from "./render.js";
+import { MAX_STEPS, frameOf, renderFrame, viewerPage, type Frame } from "./render.js";
+import type { StackEntry } from "./stack.js";
 
 export class Viewer {
   private readonly token = randomBytes(16).toString("hex"); // per session
   private server?: http.Server;
   private clients = new Set<http.ServerResponse>();
   private lastFrame?: string;
+  private steps: string[] = [];
+  private stackFrames = new Map<string, Frame>();
+  private lastStack?: string;
   private actualPort?: number;
 
   constructor(private title: string) {}
@@ -86,14 +90,36 @@ export class Viewer {
     // before any screen has painted hangs.
     res.flushHeaders();
     this.clients.add(res);
-    // So a page opened mid session shows the current screen rather than a blank grid.
+    // So a page opened mid session has the history and the current screen rather than a blank grid.
+    for (const s of this.steps) res.write(`event: step\ndata: ${s}\n\n`);
+    if (this.lastStack) res.write(`event: stack\ndata: ${this.lastStack}\n\n`);
     if (this.lastFrame) res.write(`data: ${this.lastFrame}\n\n`);
     res.on("close", () => this.clients.delete(res));
+  }
+
+  // The top entry takes the screen as it settled. The ones below keep the screen they had on top.
+  stackMoved(screen: ScreenBuffer, entries: readonly StackEntry[], window?: string) {
+    const top = entries[entries.length - 1];
+    if (top) this.stackFrames.set(top.key, frameOf(screen));
+    for (const key of this.stackFrames.keys()) {
+      if (!entries.some((e) => e.key === key)) this.stackFrames.delete(key);
+    }
+    this.lastStack = JSON.stringify({
+      window,
+      entries: entries.map((e) => ({ title: e.title, ...this.stackFrames.get(e.key) })),
+    });
+    for (const c of this.clients) c.write(`event: stack\ndata: ${this.lastStack}\n\n`);
   }
 
   update(screen: ScreenBuffer) {
     this.lastFrame = renderFrame(screen);
     for (const c of this.clients) c.write(`data: ${this.lastFrame}\n\n`);
+  }
+
+  step(screen: ScreenBuffer, label: string, wire: string[] = [], stack: string[] = []) {
+    const frame = renderFrame(screen, { label, at: Date.now(), wire, stack });
+    if (this.steps.push(frame) > MAX_STEPS) this.steps.shift();
+    for (const c of this.clients) c.write(`event: step\ndata: ${frame}\n\n`);
   }
 
   stop() {

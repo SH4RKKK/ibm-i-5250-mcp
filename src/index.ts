@@ -43,7 +43,8 @@ const toolResult = (r: ToolReporter, text: string) => ({
   content: [{ type: "text" as const, text: `${text.trimEnd()}\n\n${r.footer()}` }],
 });
 
-const snapshotOf = (live: OpenSession) => renderSnapshot(live.session.screen);
+const snapshotOf = (live: OpenSession) =>
+  renderSnapshot(live.session.screen, live.session.stack.lines(), live.session.stack.windowOnTop);
 
 // One spelling, or a catch handler drops an entry the tool never touched.
 const keyOf = (name?: string) => name?.toLowerCase() || "default";
@@ -82,6 +83,8 @@ async function openSession(key: string, opts: OpenOpts, r: ToolReporter): Promis
     if (url) {
       live.viewer = v;
       s.on("screen", (sc) => v.update(sc));
+      s.on("moved", () => v.stackMoved(s.screen, s.stack.screens, s.stack.windowOnTop));
+      s.on("step", (label: string, wire: string[] = []) => v.step(s.screen, label, wire, s.stack.lines()));
       r.log("info", `live view at ${url}`);
     } else {
       r.log("warning", "could not start the live view, continuing without it");
@@ -91,6 +94,7 @@ async function openSession(key: string, opts: OpenOpts, r: ToolReporter): Promis
   sessions.set(key, live);
   await s.open(r);
   if (opts.signOn !== false) await s.establish(r);
+  s.emit("step", opts.signOn === false ? "opened" : "signed on");
   return live;
 }
 
@@ -163,7 +167,7 @@ mcp.tool(
 
 mcp.tool(
   "screen_snapshot",
-  "Return the current screen without changing anything: the literal screen text, the field list with refs, the cursor position, the keyboard state and any message line. Use this to look before acting.",
+  "Return the current screen without changing anything: the literal screen text, the field list with refs, the cursor position, the keyboard state, any message line, and the stack of screens that led here, which is usually where F3 and F12 lead back to. Use this to look before acting.",
   { session: sessionArg },
   async ({ session }, extra) => {
     const r = makeReporter(mcp, extra, "screen_snapshot");
@@ -199,8 +203,11 @@ Typing sends nothing to the host. A 5250 holds it locally and transmits only on 
     try {
       const live = requireSession(session);
       const parsed = actions.map((a, i) => parseAction(a, i + 1, "action "));
-      await applyActions(live.session, parsed, r);
-      return toolResult(r, snapshotOf(live));
+      const wire = await applyActions(live.session, parsed, r);
+      const trace = wire.length
+        ? `\n\nwire (what the host sent for each key):\n${wire.map((w) => `  ${w}`).join("\n")}`
+        : "";
+      return toolResult(r, snapshotOf(live) + trace);
     } catch (e) {
       const live = sessions.get(keyOf(session));
       // The screen is where the run stopped, which is the thing that says why.
