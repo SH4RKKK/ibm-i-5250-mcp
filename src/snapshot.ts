@@ -1,6 +1,7 @@
 // The LLM facing view of a screen: the literal screen, plus a field list with stable refs.
 
 import { createHash } from "node:crypto";
+import { isNondisplay } from "./codes.js";
 import type { Field, ScreenBuffer } from "./screen.js";
 
 const MSGID = /\b[A-Z]{3}\d{4}\b/;
@@ -12,34 +13,20 @@ export function lastPaintedRow(screen: ScreenBuffer): number {
   return last;
 }
 
-// Geometry of the input fields, so it survives changing data. undefined when there are none.
+// The record format rather than the data: where the input fields are, how they are defined, and the
+// header's function key switches. A run of identical fields on consecutive rows, which is a subfile's
+// option column, counts once from its first row, so a list showing 3 rows signs like one showing 20.
+// undefined when there are no input fields.
 export function structuralSignature(screen: ScreenBuffer): string | undefined {
-  const messageRow = lastPaintedRow(screen); // transient, so not part of identity
-  const triples = screen
-    .inputFields()
-    .filter((f) => f.row !== messageRow)
-    .map((f) => [f.row, f.col, f.length] as [number, number, number])
-    .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
-  if (!triples.length) return undefined;
-  const canonical = "v1:" + triples.map(([r, c, l]) => `${r},${c},${l}`).join(";");
+  const messageRow = screen.messageRow(); // transient, so not part of identity
+  const shape = (f: Field, row = f.row) =>
+    [row, f.col, f.length, f.shift, f.monocase, f.mandatory, f.autoEnter, isNondisplay(f.attr)].join(",");
+  const input = screen.inputFields().filter((f) => f.row !== messageRow);
+  const all = new Set(input.map((f) => shape(f)));
+  const heads = input.filter((f) => !all.has(shape(f, f.row - 1))).map((f) => shape(f)).sort();
+  if (!heads.length) return undefined;
+  const canonical = `v2:${screen.keyMask}|${heads.join(";")}`;
   return createHash("sha256").update(canonical).digest("hex").slice(0, 12);
-}
-
-// Fallback for screens with no input fields: the text, with volatile parts stripped.
-function textSignature(screen: ScreenBuffer): string {
-  const normalised = screen
-    .lines()
-    .map((l) =>
-      l
-        .replace(/\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/g, "#date")
-        .replace(/\d{1,2}:\d{2}(:\d{2})?/g, "#time")
-        .replace(/\d+/g, "#")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter(Boolean)
-    .join("|");
-  return createHash("sha256").update("t1:" + normalised).digest("hex").slice(0, 12);
 }
 
 // The error row is settable through the SOH order and windows move it, so scan rather than assume 24.
@@ -80,14 +67,14 @@ export function renderSnapshot(screen: ScreenBuffer, stack: string[] = [], windo
   // Never a name: nothing on the wire carries one.
   const sig = structuralSignature(screen);
   const out: string[] = [
-    `screen: ${sig ? `signature ${sig}` : `signature ${textSignature(screen)} (text based, no input fields)`}`,
+    `screen: ${sig ? `signature ${sig}` : "no signature (no input fields)"}`,
     `size: ${screen.rows}x${screen.cols}   cursor: ${screen.cursorRow},${screen.cursorCol}   ` +
       `keyboard: ${screen.keyboardLocked ? "LOCKED (host is busy)" : "unlocked"}` +
       (screen.alarm ? "   alarm: sounded" : ""),
   ];
   const msg = messageLine(screen);
   if (msg) out.push(`message: ${msg}`);
-  if (window) out.push(`window: ${window}, drawn over this screen rather than a screen of its own`);
+  if (window) out.push(`window: ${window}, drawn over the screen behind it`);
   if (stack.length) {
     out.push("stack (the screens behind this one, nearest first):");
     for (const l of stack) out.push(`  ${l}`);

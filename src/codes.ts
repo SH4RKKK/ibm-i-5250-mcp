@@ -17,6 +17,7 @@ export const CMD = {
   READ_SCREEN_IMMEDIATE: 0x62,
   READ_IMMEDIATE: 0x72,
   SAVE_SCREEN: 0x02,
+  RESTORE_SCREEN: 0x12,
   WRITE_STRUCTURED_FIELD: 0xf3,
 } as const;
 
@@ -36,7 +37,7 @@ export const CMD_NAMES: Record<number, string> = {
   [CMD.READ_IMMEDIATE]: "read immediate",
   [CMD.SAVE_SCREEN]: "save screen",
   0x03: "save partial screen",
-  0x12: "restore screen",
+  [CMD.RESTORE_SCREEN]: "restore screen",
   0x13: "restore partial screen",
   0x23: "roll",
   [CMD.WRITE_STRUCTURED_FIELD]: "structured field",

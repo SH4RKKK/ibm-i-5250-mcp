@@ -67,8 +67,10 @@ the operator which field it rejected.
 `message: none` checks there is no message at all. It needs a real IBM i
 message id, so a program that writes plain text with no id will not match.
 
-`signature: 8156d875c512` pins the structural signature, which is the geometry
-of the input fields hashed, so it survives changing data, dates and names. Use
+`signature: 8156d875c512` pins the structural signature, which is the record
+format hashed: where the input fields are, how they are defined, and the
+header's function key switches. It survives changing data, dates and names,
+and a list showing more or fewer rows. Use
 it as a tripwire, not as the meaning of a test: when it fails it tells you the
 screen changed and nothing whatsoever about how. The readable assertions above
 are what make a failure diagnosable.

@@ -13,8 +13,8 @@ import { KEY_TO_AID, AID, CMD, ESC, FFW, ORDER, attrName, attrOf } from "./codes
 import { buildInbound, buildQueryReply, buildSaveScreenReply } from "./inbound.js";
 import { MAX_STEPS, renderFrame } from "./render.js";
 import { formatSuite, parseTest } from "./testrun.js";
-import { lastPaintedRow, messageLine, renderSnapshot } from "./snapshot.js";
-import { ScreenStack, screenKey, windowTitle } from "./stack.js";
+import { lastPaintedRow, messageLine, renderSnapshot, structuralSignature } from "./snapshot.js";
+import { ScreenStack, windowTitle, type Exchange } from "./stack.js";
 
 // dist/selfcheck.js -> project root -> test/fixtures
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -641,10 +641,12 @@ test("a read command is the readiness signal, so settle does not pay the quiet p
     lastReply: "",
     recordCount: 0,
     exchange: [],
+    seen: { saved: false, restored: false, cleared: false },
     emit: () => true,
   });
 
   Session.prototype["onRecord"].call(stub, fixture("signon.bin"));
+  assert.equal(stub["seen"].cleared, true, "the fixture opens with clear unit, which the stack is told");
   // The fixture really does end in Read MDT Fields: see the commands assert above.
   assert.equal(stub["sawRead"], true);
   assert.equal(stub.screen.keyboardLocked, false);
@@ -683,55 +685,10 @@ test("the live view is gated by a per session token, not just the Host header", 
   }
 });
 
-test("the stack pushes new screens, keeps updates, pops on return and leaves windows out", () => {
-  const painted = (rows: Record<number, string>) => {
-    const s = new ScreenBuffer(24, 80, 37);
-    for (const [r, text] of Object.entries(rows)) enc(text.padEnd(80)).copy(s.chars, (Number(r) - 1) * 80);
-    return s;
-  };
-  // IBM help draws its window as a full repaint, with only the border to say so.
-  const help = (title: string) => ({
-    1: "MAIN          IBM i Main Menu",
-    2: " " + ".".repeat(78),
-    3: " :" + `   ${title}`.padEnd(76) + ":",
-    4: " :" + "".padEnd(76) + ":",
-    5: " :" + ".".repeat(76) + ":",
-  });
-  const main = painted({ 1: "MAIN          IBM i Main Menu", 2: "                     System:   MYBOX1" });
-  const menu = (time: string) => painted({ 1: `  ORD000   ORDERS     01-02-2026  ${time}`, 5: "  1. Order entry" });
-  const sub = painted({ 1: "  ORD010   ORDERS Test   01-02-2026  09:15" });
-
-  const st = new ScreenStack();
-  st.reset(main);
-  assert.equal(st.observe(menu("09:15")), "new");
-  assert.equal(st.observe(menu("09:16")), "update", "a new time is the same screen");
-  assert.equal(st.observe(sub), "new");
-  // This screen is what the reader is looking at, so only the ones behind it are listed.
-  assert.deepEqual(st.lines(), ["1. ORD000 ORDERS", "2. MAIN IBM i Main Menu System: MYBOX1"],
-    "nearest first, without dates and times");
-
-  assert.equal(st.observe(painted(help("Main Menu - Help"))), "window");
-  assert.equal(st.lines().length, 2, "a window is marked, not stacked");
-  assert.equal(st.windowOnTop, "Main Menu - Help");
-  assert.equal(st.observe(sub), "update", "closing the window lands on the same screen");
-  assert.equal(st.windowOnTop, undefined);
-
-  assert.equal(st.observe(main), "back", "F3 twice at once still lands on the right entry");
-  assert.deepEqual(st.lines(), [], "nothing behind the first screen");
-
-  assert.equal(windowTitle(painted({ 3: "  Library . . . . . . . . . . .   QGPL" })), undefined, "a dotted leader is not a border");
-
-  const typed = painted({ 1: "Work with things" });
-  typed.fields = [field({ row: 2, col: 10, length: 10 })];
-  const blank = screenKey(typed);
-  typed.typeInto(typed.fields[0], "ACME", enc);
-  assert.equal(screenKey(typed), blank, "typed text is not part of what identifies a screen");
-});
-
 // SBA to the cell before the field, since Start Field writes the attribute there.
 const sf = (row: number, col: number, len: number) =>
   [ORDER.SBA, row, col - 1, ORDER.SF, FFW.PRESENT, 0x00, 0x20, 0, len];
-const header = (errorRow: number) => [ORDER.SOH, 7, 0, 0, 0, errorRow, 0, 0, 0];
+const header = (errorRow: number, keyMask = [0, 0, 0]) => [ORDER.SOH, 7, 0, 0, 0, errorRow, ...keyMask];
 
 test("a header drops the fields of the format it replaces, as tn5250 does", () => {
   // A selection screen back to the list it filters: writes only, no clear, and a header.
@@ -755,6 +712,116 @@ test("an error message goes on the header's error row, or the last row when that
   assert.equal(onRow(0), 24);
 });
 
+// Built the way the host builds one on a 27x132 display: clear, a header naming row 28 so row 27 is
+// the message row, the text, then the input fields.
+const formatted = (text: Record<number, string>, fields: [number, number, number][], keyMask?: number[]) => {
+  const s = new ScreenBuffer(27, 132, 37);
+  const paint = Object.entries(text).flatMap(([r, t]) => [ORDER.SBA, Number(r), 1, ...enc(t)]);
+  s.apply(gds(ESC, CMD.CLEAR_UNIT_ALTERNATE, 0x00, ESC, CMD.WRITE_TO_DISPLAY, 0, 0,
+    ...header(28, keyMask), ...paint, ...fields.flatMap(([r, c, l]) => sf(r, c, l))));
+  return s;
+};
+const column = (from: number, rows: number) =>
+  Array.from({ length: rows }, (_, i) => [from + i, 2, 1] as [number, number, number]);
+const ex = (key: string, over: Partial<Exchange> = {}): Exchange =>
+  ({ key, saved: false, restored: false, cleared: true, ...over });
+
+test("the signature is the record format, so data, list length and typed text leave it alone", () => {
+  const list = (title: string, rows: number, keyMask?: number[]) => formatted({ 1: title }, column(6, rows), keyMask);
+  const full = structuralSignature(list("Work with orders   ORD001", 20));
+  assert.ok(full);
+  assert.equal(structuralSignature(list("Work with orders   ORD002", 20)), full, "the header is data");
+  assert.equal(structuralSignature(list("Work with orders   ORD001", 3)), full, "a subfile column counts once");
+  assert.notEqual(structuralSignature(list("ORD001", 20, [0, 0, 2])), full, "the function key switches are the format's");
+  assert.notEqual(structuralSignature(formatted({}, column(8, 20))), full, "a column starting lower is another format");
+
+  // The option field is on the last row with text, which the old guess took for the message line.
+  const menu = formatted({ 1: "MENU01", 25: "Option:" }, [[25, 9, 2]]);
+  const bare = structuralSignature(formatted({ 1: "MENU01" }, [[25, 9, 2]]));
+  assert.ok(structuralSignature(menu), "a menu's option field is part of its format");
+  assert.equal(structuralSignature(formatted({}, [[25, 9, 2], [27, 2, 10]])), bare, "a field on the message row is not");
+  menu.typeInto(menu.fields[0], "81", enc);
+  assert.equal(structuralSignature(menu), bare, "nor is typed text");
+  assert.equal(structuralSignature(formatted({ 1: "display only" }, [])), undefined);
+});
+
+test("the stack moves on what the host did, in a fixed order, comparing formats and never text", () => {
+  const menuA = formatted({ 1: "MENUA" }, [[25, 9, 2]]);
+  const menuB = formatted({ 1: "MENUB" }, [[25, 9, 2]]);
+  const list = formatted({ 1: "LIST" }, column(6, 2));
+  const other = formatted({ 1: "OTHER" }, [[4, 10, 8]]);
+  const shown = formatted({ 1: "DISPLAY" }, []);
+  const st = new ScreenStack();
+  const titles = () => st.screens.map((e) => e.title);
+
+  st.reset(menuA);
+  assert.equal(st.observe(menuB, ex("Enter")), "new", "Enter to the same format is the next menu");
+  assert.equal(st.observe(menuB, ex("F5")), "update", "another key on the same format is the same layer");
+  assert.equal(st.observe(list, ex("Enter")), "new");
+  assert.equal(st.observe(list, ex("Enter", { cleared: false })), "update", "a screen not cleared is the same screen");
+  assert.equal(st.observe(list, ex("PageDown")), "update", "an IBM list clears to page and is still the same list");
+
+  assert.equal(st.observe(other, ex("F13", { saved: true })), "new", "the host saves a screen before painting over it");
+  assert.equal(st.observe(list, ex("Enter")), "back", "the caller's format below the top is the caller coming back");
+  assert.deepEqual(titles(), ["MENUA", "MENUB", "LIST"]);
+
+  assert.equal(st.observe(other, ex("Enter", { saved: true, cleared: false })), "window");
+  assert.equal(st.windowOnTop, "untitled");
+  assert.equal(st.observe(list, ex("Enter", { restored: true })), "back", "a restore lands on the screen it saved");
+  assert.equal(st.windowOnTop, undefined);
+
+  assert.equal(st.observe(shown, ex("F12")), "replace", "F12 never goes deeper, so with no match below it replaces");
+  assert.equal(st.observe(menuB, ex("F3")), "back", "F3 lands on the nearest screen below of the same format");
+  assert.deepEqual(titles(), ["MENUA", "MENUB"]);
+  assert.equal(st.observe(other, ex("Enter")), "new", "a format seen nowhere is pushed");
+
+  assert.equal(windowTitle(formatted({ 3: "  Library . . . . . . . . . . .   QGPL" }, [])), undefined,
+    "a dotted leader is not a window border");
+});
+
+test("a window is named by its border, a label that never decides the move", () => {
+  const menu = formatted({ 1: "MENUA   Main menu" }, [[20, 7, 60]]);
+  // IBM help as a live box sent it: no save, a clear, then the menu painted again under the window.
+  const help = formatted({
+    1: "MENUA   Main menu",
+    6: "      " + ".".repeat(40),
+    7: "      :" + "  Option 1 - Help".padEnd(38) + ":",
+    8: "      :" + "".padEnd(38) + ":",
+    9: "      :" + ".".repeat(38) + ":",
+  }, [[8, 13, 1]]);
+  const st = new ScreenStack();
+  st.reset(menu);
+  assert.equal(st.observe(help, ex("Help")), "new", "a cleared screen of another format, so a push");
+  assert.equal(st.windowOnTop, "Option 1 - Help");
+  assert.equal(st.screens.at(-1)?.title, "Option 1 - Help", "named for the window, not the menu redrawn under it");
+  assert.equal(st.observe(menu, ex("F12")), "back");
+  assert.equal(st.windowOnTop, undefined);
+});
+
+// A run recorded on a live box, with placeholder names: each key's save and clear as its wire trace
+// showed them, and each screen's input fields.
+test("a recorded run stacks the way its user reads the screens", () => {
+  const menu = (name: string) => formatted({ 1: `  ${name}   ACME` }, [[25, 9, 2]]);
+  const st = new ScreenStack();
+  st.reset(formatted({ 1: "MAIN   IBM i Main Menu" }, [[20, 7, 153]]));
+  const moves = [
+    st.observe(menu("MENU01"), ex("Enter")),
+    st.observe(menu("MENU02"), ex("Enter")),
+    st.observe(menu("MENU03"), ex("Enter")),
+    st.observe(menu("MENU04"), ex("Enter")),
+    st.observe(formatted({ 1: "ORD001 Orders" }, column(6, 20)), ex("Enter")),
+    st.observe(formatted({ 1: "SORT Select a sort" }, [[3, 15, 7], [5, 51, 2]], [0, 0, 2]), ex("F13", { saved: true })),
+    st.observe(formatted({ 1: "ORD002 Orders" }, column(6, 20)), ex("Enter")),
+    st.observe(formatted({ 2: "Order log A" }, column(5, 22)), ex("Enter", { saved: true })),
+    st.observe(formatted({ 2: "Order log B" }, []), ex("F12")),
+    st.observe(formatted({ 1: "ORD002 Orders" }, column(6, 20)), ex("F12")),
+    st.observe(formatted({ 2: "Order log A" }, []), ex("Enter", { saved: true })),
+  ];
+  assert.deepEqual(moves, ["new", "new", "new", "new", "new", "new", "back", "new", "replace", "back", "new"]);
+  assert.deepEqual(st.lines().map((l) => l.split(" ")[1]), ["ORD002", "MENU04", "MENU03", "MENU02", "MENU01", "MAIN"],
+    "the search is a branch it came back from, and the sorted list is the list");
+});
+
 test("the stack view keeps each screen as it was on top and forgets popped ones", () => {
   const v = new Viewer("t");
   const writes: string[] = [];
@@ -764,8 +831,8 @@ test("the stack view keeps each screen as it was on top and forgets popped ones"
     enc(text).copy(s.chars, 0);
     return s;
   };
-  const a = { key: "a", title: "MAIN" };
-  const b = { key: "b", title: "ORD000" };
+  const a = { id: 1, format: "", title: "MAIN", window: false, saved: false };
+  const b = { id: 2, format: "", title: "ORD000", window: false, saved: false };
 
   v.stackMoved(at("MAIN MENU"), [a]);
   v.stackMoved(at("ORD000 MENU"), [a, b]);

@@ -44,8 +44,9 @@ Say you ask: "open order entry on PROD, put the cursor on the fifth line and del
    ```
 
    Blank rows are dropped and real row numbers kept. The snapshot also lists the stack: the screens
-   behind this one, nearest first, which is usually where F3 and F12 lead back to. An open window is
-   named on a line of its own rather than added as a screen.
+   behind this one, nearest first, which is usually where F3 and F12 lead back to. A window is named
+   on a line of its own, and is a screen of its own on the stack unless the host paints it straight
+   over the screen below, with no clear and no save.
 4. `screen_do(actions: ["cursor: 6,2", "key: F2"])` opens the confirmation window the program paints.
    The snapshot now carries the window's field, and the cursor is inside it.
 5. `screen_do(actions: ["type f23: Y", "key: Enter"])` answers it.
@@ -149,7 +150,7 @@ when the same name is in both.
 | `IBMI_5250_TLS_INSECURE` | no | `false` | accept any certificate on 992, self signed included |
 | `IBMI_5250_VIEWER` | no | `false` | `true` starts the live view |
 | `IBMI_5250_VIEWER_PORT` | no | `5250` | falls back to a free port when this one is busy |
-| `IBMI_5250_TRACE` | no | `false` | `true` adds what the host sent for each key to the snapshot and the live view history |
+| `IBMI_5250_TRACE` | no | `false` | `true` adds what the host sent for each key to what `screen_do` returns |
 | `IBMI_5250_CURLIB` | no | | typed into Current library at sign on |
 | `IBMI_5250_PROGRAM` | no | | typed into Program/procedure at sign on |
 | `IBMI_5250_MENU` | no | | typed into Menu at sign on |

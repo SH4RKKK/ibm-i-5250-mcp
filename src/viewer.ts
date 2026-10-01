@@ -12,7 +12,7 @@ export class Viewer {
   private clients = new Set<http.ServerResponse>();
   private lastFrame?: string;
   private steps: string[] = [];
-  private stackFrames = new Map<string, Frame>();
+  private stackFrames = new Map<number, Frame>();
   private lastStack?: string;
   private actualPort?: number;
 
@@ -100,13 +100,13 @@ export class Viewer {
   // The top entry takes the screen as it settled. The ones below keep the screen they had on top.
   stackMoved(screen: ScreenBuffer, entries: readonly StackEntry[], window?: string) {
     const top = entries[entries.length - 1];
-    if (top) this.stackFrames.set(top.key, frameOf(screen));
-    for (const key of this.stackFrames.keys()) {
-      if (!entries.some((e) => e.key === key)) this.stackFrames.delete(key);
+    if (top) this.stackFrames.set(top.id, frameOf(screen));
+    for (const id of this.stackFrames.keys()) {
+      if (!entries.some((e) => e.id === id)) this.stackFrames.delete(id);
     }
     this.lastStack = JSON.stringify({
       window,
-      entries: entries.map((e) => ({ title: e.title, ...this.stackFrames.get(e.key) })),
+      entries: entries.map((e) => ({ title: e.title, ...this.stackFrames.get(e.id) })),
     });
     for (const c of this.clients) c.write(`event: stack\ndata: ${this.lastStack}\n\n`);
   }
@@ -116,8 +116,8 @@ export class Viewer {
     for (const c of this.clients) c.write(`data: ${this.lastFrame}\n\n`);
   }
 
-  step(screen: ScreenBuffer, label: string, wire: string[] = [], stack: string[] = []) {
-    const frame = renderFrame(screen, { label, at: Date.now(), wire, stack });
+  step(screen: ScreenBuffer, label: string) {
+    const frame = renderFrame(screen, { label, at: Date.now() });
     if (this.steps.push(frame) > MAX_STEPS) this.steps.shift();
     for (const c of this.clients) c.write(`event: step\ndata: ${frame}\n\n`);
   }

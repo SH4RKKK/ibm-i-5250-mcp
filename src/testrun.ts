@@ -194,7 +194,7 @@ export async function applyActions(
   const step = (key: string, move?: string) => {
     const line = `${key} (${move ?? "stopped"}): ${session.exchange.join(" / ") || "nothing"}`;
     wire.push(line);
-    session.emit("step", move ? key : `${key}, stopped on an error`, session.profile.trace ? [line] : []);
+    session.emit("step", move ? key : `${key}, stopped on an error`);
   };
   for (const a of actions) {
     try {

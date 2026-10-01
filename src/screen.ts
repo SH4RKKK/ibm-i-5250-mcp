@@ -60,6 +60,7 @@ export class ScreenBuffer {
   keyboardLocked = true;
   alarm = false;
   ccsid: number;
+  keyMask = ""; // the Start of Header's function key switches, which the record format sets
 
   private pos = 0;
   private seq = 0;
@@ -97,6 +98,7 @@ export class ScreenBuffer {
     this.attrs.fill(ATTR_GREEN);
     this.fields = [];
     this.errorRow = 0;
+    this.keyMask = "";
     this.pos = 0;
     this.curAttr = ATTR_GREEN;
     this.cursorRow = 1;
@@ -106,10 +108,11 @@ export class ScreenBuffer {
   clearFormatTable() {
     this.fields = []; // leaves the pixels: this is how a repaint keeps its layout
     this.errorRow = 0;
+    this.keyMask = "";
   }
 
   // As tn5250 reads it: a row past the screen, which IBM i sends on a 27 row display, means the last.
-  private messageRow(): number {
+  messageRow(): number {
     return this.errorRow >= 1 && this.errorRow <= this.rows ? this.errorRow : this.rows;
   }
 
@@ -340,6 +343,7 @@ export class ScreenBuffer {
           this.fields = [];
           this.definedHere = [];
           this.errorRow = r[i + 1] >= 4 ? (r[i + 5] ?? 0) : 0;
+          this.keyMask = r[i + 1] >= 7 ? hex(r[i + 6], r[i + 7], r[i + 8]) : "";
           i += 2 + r[i + 1];
           continue;
 

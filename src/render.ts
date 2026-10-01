@@ -120,9 +120,6 @@ export function viewerPage(title: string): string {
   .locked { color:#ff4d4d; font-weight:600; }
   .ok { color:#33ff44; }
   .oia { margin-top:6px; color:#9fc09f; font-size:12px; }
-  #hwire { color:#7fa07f; white-space:pre-wrap; }
-  .stack { color:#9fc09f; font-size:12px; white-space:pre-wrap; margin-bottom:8px; }
-  .stack:empty { display:none; }
   .crumbs { display:flex; flex-direction:column; align-items:flex-start; gap:4px; margin-bottom:8px; }
   .crumbs button { font:inherit; font-size:12px; color:#9fc09f; background:#111a11; text-align:left;
                    border:1px solid #234023; border-radius:3px; padding:2px 10px; cursor:pointer; }
@@ -158,10 +155,8 @@ export function viewerPage(title: string): string {
     <span id="label"></span>
     <button id="newest" hidden>newest</button>
   </div>
-  <div class="stack" id="hstack"></div>
   <div class="screen" id="hscreen">no screens yet</div>
   <div class="oia" id="hoia"></div>
-  <div class="oia" id="hwire"></div>
 </details>
 </section>
 <script>
@@ -187,8 +182,6 @@ export function viewerPage(title: string): string {
     if (s) {
       $("hscreen").innerHTML = s.rows;
       $("hoia").innerHTML = s.oia;
-      $("hwire").textContent = (s.wire || []).join("\\n");
-      $("hstack").textContent = (s.stack || []).join("\\n");
     }
     $("count").textContent = past()
       ? past() + (past() === 1 ? " screen" : " screens")

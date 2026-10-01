@@ -84,7 +84,7 @@ async function openSession(key: string, opts: OpenOpts, r: ToolReporter): Promis
       live.viewer = v;
       s.on("screen", (sc) => v.update(sc));
       s.on("moved", () => v.stackMoved(s.screen, s.stack.screens, s.stack.windowOnTop));
-      s.on("step", (label: string, wire: string[] = []) => v.step(s.screen, label, wire, s.stack.lines()));
+      s.on("step", (label: string) => v.step(s.screen, label));
       r.log("info", `live view at ${url}`);
     } else {
       r.log("warning", "could not start the live view, continuing without it");

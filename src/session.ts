@@ -8,7 +8,7 @@ import { assertCommandAllowed } from "./guard.js";
 import { buildInbound, buildQueryReply, buildReadScreenReply, buildSaveScreenReply } from "./inbound.js";
 import { ScreenBuffer, type Field, type ParsedRecord } from "./screen.js";
 import { lastPaintedRow, messageLine } from "./snapshot.js";
-import { ScreenStack, type Move } from "./stack.js";
+import { ScreenStack, type Exchange, type Move } from "./stack.js";
 import { Telnet5250Connection } from "./telnet.js";
 import { NOOP_REPORTER, type Profile, type Reporter } from "./types.js";
 
@@ -33,6 +33,7 @@ export class Session extends EventEmitter {
   private lastReadWasAllFields = false;
   private closed = false;
   exchange: string[] = []; // the trace of each record since the last key, see ParsedRecord.trace
+  private seen: Omit<Exchange, "key"> = { saved: false, restored: false, cleared: false };
   readonly stack = new ScreenStack();
   lastMove?: Move;
 
@@ -66,6 +67,11 @@ export class Session extends EventEmitter {
     }
 
     this.exchange.push(parsed.trace.join(", "));
+    if (parsed.saveScreenRequested) this.seen.saved = true;
+    if (parsed.commands.includes(CMD.RESTORE_SCREEN)) this.seen.restored = true;
+    if (parsed.commands.includes(CMD.CLEAR_UNIT) || parsed.commands.includes(CMD.CLEAR_UNIT_ALTERNATE)) {
+      this.seen.cleared = true;
+    }
     if (parsed.commands.some((c) => READ_CMDS.has(c))) this.sawRead = true;
     if (parsed.commands.includes(CMD.READ_INPUT_FIELDS)) this.lastReadWasAllFields = true;
     else if (parsed.commands.includes(CMD.READ_MDT_FIELDS) || parsed.commands.includes(CMD.READ_MDT_FIELDS_ALT)) {
@@ -192,6 +198,7 @@ export class Session extends EventEmitter {
 
   async pressKey(key: string, reporter: Reporter = NOOP_REPORTER): Promise<void> {
     this.exchange = [];
+    this.seen = { saved: false, restored: false, cleared: false };
     const name = normaliseKey(key);
     const aid = KEY_TO_AID[name];
     if (aid === undefined) {
@@ -208,7 +215,7 @@ export class Session extends EventEmitter {
     this.restartSettle();
     this.conn.sendRecord(record);
     await this.settle(`the response to ${key}`);
-    this.lastMove = this.stack.observe(this.screen);
+    this.lastMove = this.stack.observe(this.screen, { key: name, ...this.seen });
     this.emit("moved");
   }
 
