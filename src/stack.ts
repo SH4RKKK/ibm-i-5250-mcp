@@ -1,30 +1,28 @@
-// The screens that led to this one. The 5250 stream names no program and no record format, and it
-// sends constants and data alike as plain characters, so the text cannot say which screen this is.
-// Moves are read from what the host did in answer to a key: Save Screen before it paints over a
-// screen, Restore Screen to bring one back, Clear Unit for a screen of its own. Where those do not
-// decide, screens are compared by record format (structuralSignature), never by text, which only
-// labels them.
+// The screens that led to this one. The stream names no program or record format and sends constants
+// and data alike, so moves come from what the host did in answer to a key and, where that does not
+// decide, from the record format (structuralSignature). Text only labels the entries.
 
 import type { ScreenBuffer } from "./screen.js";
 import { structuralSignature } from "./snapshot.js";
 
 export type Move = "new" | "window" | "update" | "replace" | "back";
 
-// What the host did in answer to one key, across every record until the screen settled.
+// One key, and what the host did in answer across every record until the screen settled.
 export interface Exchange {
   key: string;
+  selected: boolean; // only digits were typed, which is how an IBM i menu picks an option
   saved: boolean;
   restored: boolean;
   cleared: boolean;
 }
 
 export interface StackEntry {
-  id: number;      // stable while the entry lives, so the live view keeps its picture
-  format: string;  // structuralSignature, "" for a screen with no input fields
+  id: number;           // stable while the entry lives, so the live view keeps its picture
+  format: string;       // "" for a screen with no input fields
   title: string;
-  window: boolean; // painted over the entry below without a clear
-  saved: boolean;  // the host saved this screen before painting over it, so a restore lands here
-  windowTitle?: string; // the window on this screen, a label only
+  window: boolean;      // painted over the entry below without a clear
+  saved: boolean;       // the host saved this screen before painting over it, so a restore lands here
+  windowTitle?: string; // a label only
 }
 
 const ROLL_KEYS = new Set(["PageUp", "PageDown"]);
@@ -46,7 +44,9 @@ export function screenTitle(screen: ScreenBuffer): string {
   const top = [row(screen, 1), row(screen, 2)];
   if (!top.some((l) => l.trim())) {
     top.length = 0;
-    for (let r = 3; r <= screen.rows && top.length < 2; r++) if (row(screen, r).trim()) top.push(row(screen, r));
+    for (let r = 3; r <= screen.rows && top.length < 2; r++) {
+      if (row(screen, r).trim()) top.push(row(screen, r));
+    }
   }
   const title = top
     .flatMap((l) => l.split(/\s{2,}/))
@@ -56,9 +56,6 @@ export function screenTitle(screen: ScreenBuffer): string {
   return title.length > 60 ? `${title.slice(0, 59)}…` : title;
 }
 
-// ponytail: a label only, never a move. The default border, a solid run of dots with a colon under
-// both ends, which IBM help and DDS windows use. A border made of attributes or WDWBORDER characters
-// goes unnamed. A dotted leader such as "File . . . ." has spaces in it, so it never qualifies.
 export function windowTitle(screen: ScreenBuffer): string | undefined {
   for (let r = 1; r + 2 <= screen.rows; r++) {
     const m = /\.{10,}/.exec(screen.line(r));
@@ -79,9 +76,6 @@ export function windowTitle(screen: ScreenBuffer): string | undefined {
   return undefined;
 }
 
-// ponytail: screens built from one template, such as a set of menus, are told apart by order alone,
-// so an F3 that skips a level among them lands on the nearest one. A same layer change with no
-// detour, such as a sort toggled on the list itself, reads as one menu leading to the next.
 export class ScreenStack {
   private entries: StackEntry[] = [];
   private nextId = 1;
@@ -97,14 +91,15 @@ export class ScreenStack {
   reset(screen: ScreenBuffer) {
     this.entries = [];
     this.push(false);
-    this.describeTop(screen);
+    this.describeTop(screen, structuralSignature(screen) ?? "");
   }
 
-  // The first rule that applies decides. Whatever it decided, the top entry then describes the screen
-  // that is on top, which is how a return replaces the caller's old data with its new.
+  // Whatever the move, the top entry then describes the screen on top, which is how a return replaces
+  // the caller's old data with its new.
   observe(screen: ScreenBuffer, ex: Exchange): Move {
-    const move = this.decide(structuralSignature(screen) ?? "", ex);
-    this.describeTop(screen);
+    const format = structuralSignature(screen) ?? "";
+    const move = this.decide(format, ex);
+    this.describeTop(screen, format);
     return move;
   }
 
@@ -142,16 +137,19 @@ export class ScreenStack {
       top.window = false;
       return "replace";
     }
+    // Ahead of the match below, or menus sharing one layout fold into each other. A command, or
+    // nothing typed, that brings the same format back ran and left the screen where it was.
     if (format === top.format) {
-      if (ex.key === "Enter") {
+      if (ex.key === "Enter" && ex.selected) {
         this.push(false);
         return "new";
       }
       top.window = false;
       return "update";
     }
-    // The caller coming back. A screen with no input fields has nothing to match on.
-    if (format && below >= 0) {
+    // The caller coming back. A screen with no input fields has nothing to match on, and a typed
+    // option goes forward even onto a format seen below, such as a second command line.
+    if (format && below >= 0 && !ex.selected) {
       this.backTo(below);
       return "back";
     }
@@ -170,21 +168,22 @@ export class ScreenStack {
   }
 
   private nearestBelow(format: string): number {
-    for (let i = this.entries.length - 2; i >= 0; i--) if (this.entries[i].format === format) return i;
+    for (let i = this.entries.length - 2; i >= 0; i--) {
+      if (this.entries[i].format === format) return i;
+    }
     return -1;
   }
 
-  private describeTop(screen: ScreenBuffer) {
+  // The border names a window whatever brought it, so IBM help, which repaints rather than saves, is
+  // named for the window and not for the menu redrawn under it.
+  private describeTop(screen: ScreenBuffer, format: string) {
     const top = this.entries[this.entries.length - 1];
-    top.format = structuralSignature(screen) ?? "";
-    // The border names a window whatever brought it, so IBM help, which repaints rather than saves, is
-    // named for the window and not for the menu redrawn under it.
+    top.format = format;
     top.windowTitle = windowTitle(screen) ?? (top.window ? "untitled" : undefined);
     top.title = top.windowTitle ?? screenTitle(screen);
   }
 
-  // The screens behind this one, nearest first, numbered by how far back they are. This one is left
-  // out: whoever reads the stack is already looking at it.
+  // The top is left out: whoever reads the stack is already looking at it.
   lines(): string[] {
     return this.entries.slice(0, -1).reverse().map((e, i) => `${i + 1}. ${e.title}`);
   }

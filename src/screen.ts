@@ -10,7 +10,7 @@ export interface Field {
   col: number;
   length: number;
   attr: number;
-  protectedField: boolean; // FFW bypass bit
+  protectedField: boolean;
   shift: Shift;
   monocase: boolean;
   mandatory: boolean;
@@ -21,7 +21,7 @@ export interface Field {
 
 export interface ParsedRecord {
   commands: number[];
-  unlockedKeyboard: boolean;    // CC2 bit 0x02 seen, the readiness signal
+  unlockedKeyboard: boolean;
   soundAlarm: boolean;
   sawInsertCursor: boolean;
   queryRequested: boolean;      // host sent the 5250 Query and is waiting for a reply
@@ -53,7 +53,7 @@ export class ScreenBuffer {
   readonly altRows: number; // the larger geometry this session negotiated
   readonly altCols: number;
   chars: Uint8Array;        // raw EBCDIC, one byte per cell
-  attrs: Uint8Array;        // the attribute governing each cell, for colour reporting
+  attrs: Uint8Array;
   fields: Field[] = [];
   cursorRow = 1;
   cursorCol = 1;
@@ -171,9 +171,7 @@ export class ScreenBuffer {
     return this.fields.filter((f) => !f.protectedField);
   }
 
-  // Nothing goes to the host until an AID key.
-  // Left justified, remainder blanked.
-  // right adjust needs the FFW adjust bits and only matters for numeric entry.
+  // Left justified only: right adjust needs the FFW adjust bits and only matters for numeric entry.
   typeInto(f: Field, text: string, encodeFn: (s: string) => Buffer): void {
     const bytes = encodeFn(f.monocase ? text.toUpperCase() : text);
     const start = this.idx(f.row, f.col);
@@ -196,7 +194,7 @@ export class ScreenBuffer {
 
   private writeCell(b: number) {
     if (this.pos >= this.chars.length) return;
-    if (isAttribute(b)) this.curAttr = b; // an attribute takes a cell and governs what follows
+    if (isAttribute(b)) this.curAttr = b;
     this.chars[this.pos] = b;
     this.attrs[this.pos] = this.curAttr;
     this.paint[this.pos] = this.seq;
@@ -305,14 +303,12 @@ export class ScreenBuffer {
         return i + 2;
 
       case CMD.WRITE_STRUCTURED_FIELD:
-        // <length 2 bytes> <class> <type>. Class 0xD9 type 0x70 is the 5250 Query: the host is
-        // asking the terminal to describe itself and will not proceed until answered.
+        // <length 2 bytes> <class> <type>, and class 0xD9 type 0x70 is the 5250 Query.
         out.trace[out.trace.length - 1] += ` ${hex(r[i + 2], r[i + 3])}`;
         if (r[i + 2] === 0xd9 && r[i + 3] === 0x70) out.queryRequested = true;
         return this.skipToNextEsc(r, i);
 
       case CMD.SAVE_SCREEN:
-        // The terminal holds the screen, not the host, so before painting over the host asks for it back.
         out.saveScreenRequested = true;
         return this.skipToNextEsc(r, i);
 

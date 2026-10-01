@@ -89,8 +89,6 @@ export interface Attr {
 // for it is a bit test rather than a comparison against a name that could be misspelled.
 export const isNondisplay = (a: number) => (a & 0x07) === 0x07;
 
-// Reverse image fills the whole run, trailing blanks included, so 0x31 is a turquoise bar rather
-// than turquoise text on black.
 export function attrOf(a: number): Attr {
   const nondisplay = isNondisplay(a);
   return {
@@ -125,7 +123,7 @@ export const SHIFT = [
 export type Shift = (typeof SHIFT)[number];
 
 export const CC2 = {
-  UNLOCK_KEYBOARD: 0x02, // the readiness bit the whole settle logic depends on
+  UNLOCK_KEYBOARD: 0x02,
   SOUND_ALARM: 0x04,
   RESET_MDT: 0x20,
   CLEAR_MASTER_MDT: 0x80,

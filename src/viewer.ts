@@ -7,7 +7,7 @@ import { MAX_STEPS, frameOf, renderFrame, viewerPage, type Frame } from "./rende
 import type { StackEntry } from "./stack.js";
 
 export class Viewer {
-  private readonly token = randomBytes(16).toString("hex"); // per session
+  private readonly token = randomBytes(16).toString("hex");
   private server?: http.Server;
   private clients = new Set<http.ServerResponse>();
   private lastFrame?: string;

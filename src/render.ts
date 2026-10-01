@@ -16,8 +16,6 @@ const COLOURS: Record<Attr["colour"], string> = {
 
 const SCREEN_BG = "#000";
 
-// ponytail: steps are kept in memory and replayed in full on connect. Fetch them on demand if a long
-// session makes that slow.
 export const MAX_STEPS = 500;
 
 const esc = (s: string) =>
@@ -207,9 +205,8 @@ export function viewerPage(title: string): string {
     if (e.key === "ArrowRight") $("next").click();
   };
 
-  // The cards under the live screen, nearest first. The top entry is the live screen, so it is left
-  // out. Clicking one shows it as it was when last on top, and clicking it again hides it. picked
-  // counts from the bottom, so it stays on the same screen while others are pushed above it.
+  // The top entry is the live screen, so it is left out. picked counts from the bottom, so it stays on
+  // the same screen while others are pushed above it.
   let stack = { entries: [] };
   let picked = -1;
 

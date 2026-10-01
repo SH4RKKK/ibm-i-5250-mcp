@@ -7,7 +7,6 @@ import net from "node:net";
 import tls from "node:tls";
 import type { Profile } from "./types.js";
 
-// Telnet protocol codes
 const IAC = 255;
 const SE = 240, SB = 250, WILL = 251, WONT = 252, DO = 253, DONT = 254;
 const EOR = 239;

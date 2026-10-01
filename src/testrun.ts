@@ -188,9 +188,8 @@ export async function applyActions(
 ): Promise<string[]> {
   const wire: string[] = [];
   const traced = () => (session.profile.trace ? wire : []);
-  // One live view history step per key, the screen the host settled on. Labelled by the key alone:
-  // typed text would carry a value typed into a hidden field. A timed out key is the one whose trace
-  // says most, so the catch records it too.
+  // Labelled by the key alone: typed text would carry a value typed into a hidden field. A timed out
+  // key is the one whose trace says most, so the catch records it too.
   const step = (key: string, move?: string) => {
     const line = `${key} (${move ?? "stopped"}): ${session.exchange.join(" / ") || "nothing"}`;
     wire.push(line);

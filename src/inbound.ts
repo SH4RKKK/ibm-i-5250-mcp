@@ -74,7 +74,6 @@ export function buildQueryReply(terminalType: string, encodeFn: (s: string) => B
   q[49] = 0x23; // controller and display capability
   q[50] = 0x31;
   // q[51..60] stay zero: claiming enhanced 5250 would invite windows and selection fields we do not parse.
-  // ponytail: set q[53] and q[54] when WDSF support arrives.
 
   return gdsRecord(q);
 }

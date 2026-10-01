@@ -98,7 +98,6 @@ async function openSession(key: string, opts: OpenOpts, r: ToolReporter): Promis
   return live;
 }
 
-// The viewer holds a socket, so it goes too.
 function drop(key: string) {
   const live = sessions.get(key);
   if (!live) return;

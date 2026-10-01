@@ -14,8 +14,7 @@ import { NOOP_REPORTER, type Profile, type Reporter } from "./types.js";
 
 const READ_GRACE_MS = 5;         // a read means the host is waiting, so this only catches a trailing record
 const QUIET_MS = 120;            // for a host that unlocks without a read and splits a paint over records
-const SETTLE_TIMEOUT_MS = 15000; // backstop for a host that never answers
-// ponytail: Date.now() ticks every ~15.6ms on Windows, so a finer poll buys nothing. performance.now() would.
+const SETTLE_TIMEOUT_MS = 15000;
 const POLL_MS = 5;
 
 // CA keys tell the terminal to discard changed data, so typing then F3 loses the input. Correct 5250.
@@ -33,7 +32,8 @@ export class Session extends EventEmitter {
   private lastReadWasAllFields = false;
   private closed = false;
   exchange: string[] = []; // the trace of each record since the last key, see ParsedRecord.trace
-  private seen: Omit<Exchange, "key"> = { saved: false, restored: false, cleared: false };
+  private seen: Omit<Exchange, "key" | "selected"> = { saved: false, restored: false, cleared: false };
+  private typed = new Map<string, string>();
   readonly stack = new ScreenStack();
   lastMove?: Move;
 
@@ -183,6 +183,7 @@ export class Session extends EventEmitter {
       throw new Error(`"${text}" is ${text.length} characters but field ${f.id} holds ${f.length}`);
     }
     this.screen.typeInto(f, text, this.encoder);
+    this.typed.set(f.id, text.trim());
     this.emit("screen", this.screen);
   }
 
@@ -204,6 +205,9 @@ export class Session extends EventEmitter {
     if (aid === undefined) {
       throw new Error(`unknown key "${key}". Known: ${Object.keys(KEY_TO_AID).join(", ")}`);
     }
+    const values = [...this.typed.values()].filter(Boolean);
+    const selected = values.length > 0 && values.every((v) => /^\d+$/.test(v));
+    this.typed.clear();
     const record = buildInbound(this.screen, aid, {
       allFields: this.lastReadWasAllFields,
       suppressFields: CA_KEYS.has(name),
@@ -215,7 +219,7 @@ export class Session extends EventEmitter {
     this.restartSettle();
     this.conn.sendRecord(record);
     await this.settle(`the response to ${key}`);
-    this.lastMove = this.stack.observe(this.screen, { key: name, ...this.seen });
+    this.lastMove = this.stack.observe(this.screen, { key: name, selected, ...this.seen });
     this.emit("moved");
   }
 

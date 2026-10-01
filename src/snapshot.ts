@@ -13,10 +13,8 @@ export function lastPaintedRow(screen: ScreenBuffer): number {
   return last;
 }
 
-// The record format rather than the data: where the input fields are, how they are defined, and the
-// header's function key switches. A run of identical fields on consecutive rows, which is a subfile's
-// option column, counts once from its first row, so a list showing 3 rows signs like one showing 20.
-// undefined when there are no input fields.
+// The record format, not the data. A subfile's option column counts once from its first row, so a
+// list showing 3 rows signs like one showing 20.
 export function structuralSignature(screen: ScreenBuffer): string | undefined {
   const messageRow = screen.messageRow(); // transient, so not part of identity
   const shape = (f: Field, row = f.row) =>
@@ -81,7 +79,6 @@ export function renderSnapshot(screen: ScreenBuffer, stack: string[] = [], windo
   }
   out.push("");
 
-  // Blank rows dropped, real row numbers kept.
   const w = String(screen.rows).length;
   out.push(" ".repeat(w + 2) + ruler(screen.cols));
   for (let r = 1; r <= screen.rows; r++) {
