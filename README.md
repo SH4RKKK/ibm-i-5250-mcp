@@ -59,6 +59,8 @@ Set `IBMI_5250_VIEWER=true` to turn it on. `session_open` then starts a small pa
 and returns its URL. Open it once and watch the green screen repaint as the agent works, in the real
 5250 colours, with the cursor and keyboard state.
 
+![The live view, signed on to the main menu](docs/live-view.png)
+
 The page is non interactive, so it is there to watch and nothing more. It runs on
 `http://127.0.0.1:5250`, or whatever port you set in `IBMI_5250_VIEWER_PORT`, and the URL carries a
 token that is new for every session.
@@ -71,12 +73,16 @@ The screens behind the one on display, nearest first, like a stack of cards. Goi
 them takes the cards above it off the stack. Click a screen to see it as it was when it was last on
 top, and click it again to hide it. The agent gets the same stack as text in every snapshot.
 
+![The screen stack open, with the main menu picked](docs/screen-stack.png)
+
 ### History
 
 Every screen before the one on display, one for each key the agent pressed, labelled with the key
 and the time. Step back and forward with the arrows, or with the left and right arrow keys. Stepping
 back holds the view while new screens arrive, and newest jumps to the latest again. A page opened
 in the middle of a session still gets the whole history, up to the last 500 screens.
+
+![The history open on the Programming menu](docs/history.png)
 
 ## Requirements
 
@@ -318,6 +324,7 @@ src/
   guard.ts       the command line guard
   ebcdic.ts      EBCDIC tables
   snapshot.ts    the LLM facing view of a screen
+  stack.ts       the screen stack
   render.ts      the live view page
   viewer.ts      the live view server
   config.ts      config discovery and the Profile loader
@@ -330,6 +337,7 @@ scripts/
   test.mjs       screen tests from a terminal
 test/fixtures/
   signon.bin     a sign on record, for the test suite
+docs/            the live view screenshots
 ```
 
 ## Acknowledgements
