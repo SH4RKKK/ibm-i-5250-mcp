@@ -69,7 +69,7 @@ Under the live screen are two sections, both closed until you open them.
 
 ### Screen stack
 
-Still in development and being tested, so expect it to change.
+Still in development and being tested.
 
 The screens behind the one on display, nearest first, like a stack of cards. Going back to one of
 them takes the cards above it off the stack. Click a screen to see it as it was when it was last on
@@ -246,7 +246,7 @@ so "open a session on PROD" loads `.env.PROD`. Say nothing about a box and it us
 
 ## Screen tests
 
-Work in progress. The format below runs, but expect it to change.
+Work in progress.
 
 A test is a Markdown file in `screen-tests/`. Prose is ignored, so the file reads as a specification,
 and the runner only looks at two fenced blocks: `5250-do` for the same action lines `screen_do` takes,
