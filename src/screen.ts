@@ -2,7 +2,7 @@
 // current screen, built by walking a Write To Display order stream.
 
 import { decode, DEFAULT_CCSID } from "./ebcdic.js";
-import { ATTR_GREEN, CC2, CMD, CMD_NAMES, ESC, FFW, GDS, isAttribute, isNondisplay, ORDER, SHIFT, attrOf, type Attr, type Shift } from "./codes.js";
+import { ATTR_GREEN, CC2, CMD, ESC, FFW, GDS, isAttribute, isNondisplay, ORDER, SHIFT, attrOf, type Attr, type Shift } from "./codes.js";
 
 export interface Field {
   id: string;              // f1, f2, ... stable within one screen, the model's handle
@@ -28,7 +28,6 @@ export interface ParsedRecord {
   saveScreenRequested: boolean; // host asked for the screen back and is waiting
   readScreenRequested: boolean; // Read Screen Immediate: the host wants the buffer, not the operator
   readFieldsRequested: boolean; // Read Immediate: the host wants the MDT fields, not the operator
-  trace: string[];              // how the host drew it, never what it drew
 }
 
 const NULL_CELL = 0x00;
@@ -228,7 +227,6 @@ export class ScreenBuffer {
       saveScreenRequested: false,
       readScreenRequested: false,
       readFieldsRequested: false,
-      trace: [],
     };
 
     while (i < record.length) {
@@ -238,7 +236,6 @@ export class ScreenBuffer {
       }
       const cmd = record[i + 1];
       out.commands.push(cmd);
-      out.trace.push(CMD_NAMES[cmd] ?? hex(cmd));
       i = this.applyCommand(cmd, record, i + 2, out);
     }
 
@@ -270,7 +267,6 @@ export class ScreenBuffer {
         return i;
 
       case CMD.WRITE_TO_DISPLAY: {
-        out.trace[out.trace.length - 1] += ` ${hex(r[i], r[i + 1])}`;
         const cc2 = r[i + 1];
         if (cc2 & CC2.UNLOCK_KEYBOARD) out.unlockedKeyboard = true;
         if (cc2 & CC2.SOUND_ALARM) out.soundAlarm = true;
@@ -304,7 +300,6 @@ export class ScreenBuffer {
 
       case CMD.WRITE_STRUCTURED_FIELD:
         // <length 2 bytes> <class> <type>, and class 0xD9 type 0x70 is the 5250 Query.
-        out.trace[out.trace.length - 1] += ` ${hex(r[i + 2], r[i + 3])}`;
         if (r[i + 2] === 0xd9 && r[i + 3] === 0x70) out.queryRequested = true;
         return this.skipToNextEsc(r, i);
 
@@ -335,7 +330,6 @@ export class ScreenBuffer {
         // A header opens a new set of input fields, so it empties the format table as tn5250 does.
         // Without that, a format written over another without a clear keeps the old one's fields.
         case ORDER.SOH:
-          out.trace.push(`header ${hex(...r.subarray(i + 2, i + 2 + r[i + 1]))}`);
           this.fields = [];
           this.definedHere = [];
           this.errorRow = r[i + 1] >= 4 ? (r[i + 5] ?? 0) : 0;
@@ -376,7 +370,6 @@ export class ScreenBuffer {
           continue;
 
         case ORDER.WDSF:
-          out.trace.push(`wdsf ${hex(r[i + 3], r[i + 4])}`);
           i += 1 + Math.max(2, (r[i + 1] << 8) | r[i + 2]);
           continue;
 

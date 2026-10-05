@@ -51,8 +51,6 @@ test("parses a real sign on record into the right screen", () => {
   const p = s.apply(fixture("signon.bin"));
 
   assert.deepEqual(p.commands, [CMD.CLEAR_UNIT, CMD.WRITE_TO_DISPLAY, CMD.READ_MDT_FIELDS]);
-  // 0x18 in the header is row 24, the error row.
-  assert.deepEqual(p.trace, ["clear unit", "write 00 18", "header 00 00 00 18 00 00 00", "read mdt"]);
   assert.equal(p.unlockedKeyboard, true);
   assert.equal(s.keyboardLocked, false);
 
@@ -633,7 +631,6 @@ test("a read command is the readiness signal, so settle does not pay the quiet p
     profile: { ccsid: 37, terminalType: "IBM-3477-FC" },
     lastReply: "",
     recordCount: 0,
-    exchange: [],
     seen: { saved: false, restored: false, cleared: false },
     emit: () => true,
   });
@@ -807,8 +804,8 @@ test("a window is named by its border, a label that never decides the move", () 
   assert.equal(st.windowOnTop, undefined);
 });
 
-// A run recorded on a live box, with placeholder names: each key's save and clear as its wire trace
-// showed them, and each screen's input fields.
+// A run recorded on a live box, with placeholder names: each key's save and clear as the box sent
+// them, and each screen's input fields.
 test("a recorded run stacks the way its user reads the screens", () => {
   const menu = (name: string) => formatted({ 1: `  ${name}   ACME` }, [[25, 9, 2]]);
   const st = new ScreenStack();

@@ -31,7 +31,6 @@ export class Session extends EventEmitter {
   private recordCount = 0;
   private lastReadWasAllFields = false;
   private closed = false;
-  exchange: string[] = []; // the trace of each record since the last key, see ParsedRecord.trace
   private seen: Omit<Exchange, "key" | "selected"> = { saved: false, restored: false, cleared: false };
   private typed = new Map<string, string>();
   readonly stack = new ScreenStack();
@@ -62,11 +61,9 @@ export class Session extends EventEmitter {
     } catch (e) {
       // Only the parse is wrapped, so a throw from a screen listener is not swallowed as one.
       console.error(`[ibm-i-5250] unparseable 5250 record: ${(e as Error).message}`);
-      this.exchange.push("unparseable");
       return;
     }
 
-    this.exchange.push(parsed.trace.join(", "));
     if (parsed.saveScreenRequested) this.seen.saved = true;
     if (parsed.commands.includes(CMD.RESTORE_SCREEN)) this.seen.restored = true;
     if (parsed.commands.includes(CMD.CLEAR_UNIT) || parsed.commands.includes(CMD.CLEAR_UNIT_ALTERNATE)) {
@@ -198,7 +195,6 @@ export class Session extends EventEmitter {
   }
 
   async pressKey(key: string, reporter: Reporter = NOOP_REPORTER): Promise<void> {
-    this.exchange = [];
     this.seen = { saved: false, restored: false, cleared: false };
     const name = normaliseKey(key);
     const aid = KEY_TO_AID[name];

@@ -121,7 +121,6 @@ export class Viewer {
     if (this.steps.push(frame) > MAX_STEPS) this.steps.shift();
     for (const c of this.clients) c.write(`event: step\ndata: ${frame}\n\n`);
   }
-
   stop() {
     for (const c of this.clients) c.end();
     this.clients.clear();

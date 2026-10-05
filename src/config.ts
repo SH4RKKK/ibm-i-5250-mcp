@@ -116,7 +116,6 @@ export function loadProfile(env: NodeJS.ProcessEnv | Record<string, string> = pr
     blockedCl: list(env.IBMI_BLOCKED_CL),
     viewerEnabled: bool(env.IBMI_5250_VIEWER, false, "IBMI_5250_VIEWER"),
     viewerPort: num(env.IBMI_5250_VIEWER_PORT, 5250),
-    trace: bool(env.IBMI_5250_TRACE, false, "IBMI_5250_TRACE"),
     initialLibrary: env.IBMI_5250_CURLIB || undefined,
     initialProgram: env.IBMI_5250_PROGRAM || undefined,
     initialMenu: env.IBMI_5250_MENU || undefined,

@@ -84,8 +84,7 @@ async function openSession(key: string, opts: OpenOpts, r: ToolReporter): Promis
       live.viewer = v;
       s.on("screen", (sc) => v.update(sc));
       s.on("moved", () => v.stackMoved(s.screen, s.stack.screens, s.stack.windowOnTop));
-      s.on("step", (label: string) => v.step(s.screen, label));
-      r.log("info", `live view at ${url}`);
+      s.on("step", (label: string) => v.step(s.screen, label));      r.log("info", `live view at ${url}`);
     } else {
       r.log("warning", "could not start the live view, continuing without it");
     }
@@ -202,11 +201,8 @@ Typing sends nothing to the host. A 5250 holds it locally and transmits only on 
     try {
       const live = requireSession(session);
       const parsed = actions.map((a, i) => parseAction(a, i + 1, "action "));
-      const wire = await applyActions(live.session, parsed, r);
-      const trace = wire.length
-        ? `\n\nwire (what the host sent for each key):\n${wire.map((w) => `  ${w}`).join("\n")}`
-        : "";
-      return toolResult(r, snapshotOf(live) + trace);
+      await applyActions(live.session, parsed, r);
+      return toolResult(r, snapshotOf(live));
     } catch (e) {
       const live = sessions.get(keyOf(session));
       // The screen is where the run stopped, which is the thing that says why.

@@ -185,16 +185,11 @@ export async function applyActions(
   session: Session,
   actions: Action[],
   reporter: Reporter,
-): Promise<string[]> {
-  const wire: string[] = [];
-  const traced = () => (session.profile.trace ? wire : []);
+): Promise<void> {
   // Labelled by the key alone: typed text would carry a value typed into a hidden field. A timed out
-  // key is the one whose trace says most, so the catch records it too.
-  const step = (key: string, move?: string) => {
-    const line = `${key} (${move ?? "stopped"}): ${session.exchange.join(" / ") || "nothing"}`;
-    wire.push(line);
+  // key still gets its step, since the screen it stopped on is the one that says why.
+  const step = (key: string, move?: string) =>
     session.emit("step", move ? key : `${key}, stopped on an error`);
-  };
   for (const a of actions) {
     try {
       if (a.kind === "type") {
@@ -213,7 +208,6 @@ export async function applyActions(
       throw new Error(`"${label(a)}" failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  return traced();
 }
 
 const label = (a: Action) =>

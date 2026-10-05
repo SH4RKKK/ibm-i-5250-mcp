@@ -25,7 +25,6 @@ export interface Profile {
   blockedCl: string[];           // extra verbs refused when restricted mode is off
   viewerEnabled: boolean;
   viewerPort: number;
-  trace: boolean;                // show what the host sent for each key, in what screen_do returns
   initialLibrary?: string;       // typed into the sign on screen when it offers the field
   initialProgram?: string;
   initialMenu?: string;

@@ -121,8 +121,7 @@ export function viewerPage(title: string): string {
   .crumbs { display:flex; flex-direction:column; align-items:flex-start; gap:4px; margin-bottom:8px; }
   .crumbs button { font:inherit; font-size:12px; color:#9fc09f; background:#111a11; text-align:left;
                    border:1px solid #234023; border-radius:3px; padding:2px 10px; cursor:pointer; }
-  .crumbs button.on { color:#e8e8e8; border-color:#33ff44; }
-  #conn { color:#ff4d4d; }
+  .crumbs button.on { color:#e8e8e8; border-color:#33ff44; }  #conn { color:#ff4d4d; }
 </style></head>
 <body>
 <header>
@@ -136,12 +135,14 @@ export function viewerPage(title: string): string {
   <div class="oia" id="oia"></div>
 </section>
 <section>
-  <div class="bar"><b>Screen stack</b> <span id="depth">empty</span></div>
+<details id="stk">
+  <summary><b>Screen stack</b> <span id="depth">empty</span></summary>
   <div class="crumbs" id="crumbs"></div>
   <div id="spick" hidden>
     <div class="screen" id="sscreen"></div>
     <div class="oia" id="soia"></div>
   </div>
+</details>
 </section>
 <section>
 <details id="hist">
@@ -156,8 +157,7 @@ export function viewerPage(title: string): string {
   <div class="screen" id="hscreen">no screens yet</div>
   <div class="oia" id="hoia"></div>
 </details>
-</section>
-<script>
+</section><script>
   // The token is read before being stripped from the address bar, so it leaves no history entry.
   const t = new URLSearchParams(location.search).get("t") || "";
   const src = new EventSource("/events?t=" + encodeURIComponent(t));

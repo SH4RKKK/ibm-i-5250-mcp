@@ -57,14 +57,26 @@ Say you ask: "open order entry on PROD, put the cursor on the fifth line and del
 
 Set `IBMI_5250_VIEWER=true` to turn it on. `session_open` then starts a small page on your machine
 and returns its URL. Open it once and watch the green screen repaint as the agent works, in the real
-5250 colours, with the cursor and keyboard state. Under it is the screen stack: the screens behind
-this one, nearest first, like a stack of cards, and clicking one shows it as it was. Below that is a
-history, closed until you open it, with arrows to step back and forward through the screens before
-this one, one for each key the agent pressed.
+5250 colours, with the cursor and keyboard state.
 
 The page is non interactive, so it is there to watch and nothing more. It runs on
 `http://127.0.0.1:5250`, or whatever port you set in `IBMI_5250_VIEWER_PORT`, and the URL carries a
 token that is new for every session.
+
+Under the live screen are two sections, both closed until you open them.
+
+### Screen stack
+
+The screens behind the one on display, nearest first, like a stack of cards. Going back to one of
+them takes the cards above it off the stack. Click a screen to see it as it was when it was last on
+top, and click it again to hide it. The agent gets the same stack as text in every snapshot.
+
+### History
+
+Every screen before the one on display, one for each key the agent pressed, labelled with the key
+and the time. Step back and forward with the arrows, or with the left and right arrow keys. Stepping
+back holds the view while new screens arrive, and newest jumps to the latest again. A page opened
+in the middle of a session still gets the whole history, up to the last 500 screens.
 
 ## Requirements
 
@@ -150,7 +162,6 @@ when the same name is in both.
 | `IBMI_5250_TLS_INSECURE` | no | `false` | accept any certificate on 992, self signed included |
 | `IBMI_5250_VIEWER` | no | `false` | `true` starts the live view |
 | `IBMI_5250_VIEWER_PORT` | no | `5250` | falls back to a free port when this one is busy |
-| `IBMI_5250_TRACE` | no | `false` | `true` adds what the host sent for each key to what `screen_do` returns |
 | `IBMI_5250_CURLIB` | no | | typed into Current library at sign on |
 | `IBMI_5250_PROGRAM` | no | | typed into Program/procedure at sign on |
 | `IBMI_5250_MENU` | no | | typed into Menu at sign on |
