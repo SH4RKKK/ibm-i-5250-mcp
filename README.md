@@ -69,6 +69,8 @@ Under the live screen are two sections, both closed until you open them.
 
 ### Screen stack
 
+Still in development and being tested, so expect it to change.
+
 The screens behind the one on display, nearest first, like a stack of cards. Going back to one of
 them takes the cards above it off the stack. Click a screen to see it as it was when it was last on
 top, and click it again to hide it. The agent gets the same stack as text in every snapshot.
