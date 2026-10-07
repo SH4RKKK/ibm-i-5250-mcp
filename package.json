@@ -1,6 +1,6 @@
 {
   "name": "ibm-i-5250-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server that drives IBM i 5250 green screens, the way Playwright MCP drives web pages",
   "type": "module",
   "bin": {
