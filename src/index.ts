@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { z } from "zod";
-import { KEY_TO_AID } from "./codes.js";
+import { KEYS } from "./codes.js";
 import { CONFIG_DIRS, listServers, loadProfileFor } from "./config.js";
 import { makeReporter, type ToolReporter } from "./report.js";
 import { Session } from "./session.js";
@@ -84,7 +84,8 @@ async function openSession(key: string, opts: OpenOpts, r: ToolReporter): Promis
       live.viewer = v;
       s.on("screen", (sc) => v.update(sc));
       s.on("moved", () => v.stackMoved(s.screen, s.stack.screens, s.stack.windowOnTop));
-      s.on("step", (label: string) => v.step(s.screen, label));      r.log("info", `live view at ${url}`);
+      s.on("step", (label: string) => v.step(s.screen, label));
+      r.log("info", `live view at ${url}`);
     } else {
       r.log("warning", "could not start the live view, continuing without it");
     }
@@ -185,7 +186,8 @@ mcp.tool(
 
 Each action is a line:
   "type f1: ACME LTD"   put text in a field, by ref from the snapshot, by "row,col", or by DDS name once known
-  "key: Enter"          Enter, F1 to F24, PageUp, PageDown, Help, Clear, Print
+  "key: Enter"          Enter, F1 to F24, PageUp, PageDown, Help, Clear, Print, Attn
+                        Attn is the Attention key (Esc in ACS): it runs the job's attention program, if it has one
   "cursor: 6,53"        move the cursor, which is an argument to the key: Help on a message line explains that message, Help anywhere else explains the field under it
 
 Typing sends nothing to the host. A 5250 holds it locally and transmits only on a key, so ["type f1: ACME", "type f2: 100", "key: Enter"] is one exchange with the box, not three. If an action fails the run stops there and the error names it, with the screen as it stands.`,
@@ -318,7 +320,7 @@ mcp.tool(
           `Open sessions: ${open.join(", ") || "none"}\n\n` +
           `Profiles are read from these folders, first match wins:\n${dirs}\n` +
           (servers.length ? "" : `\nNo profiles found. Copy .env.example into one of the folders above.\n`) +
-          `\nKeys: ${Object.keys(KEY_TO_AID).join(", ")}`,
+          `\nKeys: ${KEYS.join(", ")}`,
       );
     } catch (e) {
       return r.failResult(e);

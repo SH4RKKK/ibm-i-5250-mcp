@@ -10,7 +10,7 @@ import { loadProfile, loadProfileFor } from "./config.js";
 import { decode, encode } from "./ebcdic.js";
 import { assertCommandAllowed } from "./guard.js";
 import { KEY_TO_AID, AID, CMD, ESC, FFW, ORDER, attrName, attrOf } from "./codes.js";
-import { buildInbound, buildQueryReply, buildSaveScreenReply } from "./inbound.js";
+import { buildAttention, buildInbound, buildQueryReply, buildSaveScreenReply } from "./inbound.js";
 import { MAX_STEPS, renderFrame } from "./render.js";
 import { formatSuite, parseTest } from "./testrun.js";
 import { lastPaintedRow, messageLine, renderSnapshot, structuralSignature } from "./snapshot.js";
@@ -257,6 +257,17 @@ test("a saved screen puts back the screen and the format table it was saved from
     s.fields.map((f) => `${f.row},${f.col},${f.length}`),
     "the field the window added is gone again",
   );
+
+  const menu = new ScreenBuffer(24, 80, 37);
+  menu.apply(gds(
+    ESC, CMD.WRITE_TO_DISPLAY, 0, 0, ORDER.SOH, 7, 0, 0, 0, 25, 0x12, 0x34, 0x56,
+    ORDER.SBA, 23, 1, 0x20, 0xd6, 0x97, ORDER.SBA, 23, 8, ORDER.SF, FFW.PRESENT, 0x20, 0x24, 0x00, 0x02,
+  ));
+  const restored = new ScreenBuffer(24, 80, 37);
+  restored.apply(buildSaveScreenReply(menu));
+  assert.deepEqual(restored.attrs, menu.attrs, "the underline ends with the field, not at the next attribute");
+  assert.equal(restored.keyMask, "12 34 56");
+  assert.equal(structuralSignature(restored), structuralSignature(menu));
 });
 
 test("a nondisplay field is never rendered, so a password cannot leak", () => {
@@ -890,6 +901,33 @@ test("only digits typed before the key count as picking an option", async () => 
   assert.equal(await selected("chgcurlib mylib"), false);
   assert.equal(await selected(), false, "a bare Enter refreshes");
   assert.equal(await selected("1", ""), true, "a field typed empty adds nothing");
+});
+
+test("Attention goes out as a bare header, waits on nothing, and its Cancel Invite is answered", async () => {
+  assert.deepEqual([...buildAttention()], [0x00, 0x0a, 0x12, 0xa0, 0x00, 0x00, 0x04, 0x40, 0x00, 0x00]);
+
+  const sent: Buffer[] = [];
+  const stub: Session = Object.assign(Object.create(Session.prototype), {
+    screen: formatted({}, [[25, 9, 2]]),
+    typed: new Map([["f1", "81"]]),
+    conn: { sendRecord: (r: Buffer) => sent.push(r) },
+    settle: async () => {},
+    stack: { observe: () => "new" },
+  });
+  stub.screen.keyboardLocked = false;
+  await stub.pressKey("Attn");
+  await stub.pressKey("attention");
+  assert.deepEqual(sent, [buildAttention(), buildAttention()], "typed text stays on the screen, not in the record");
+  assert.equal(stub.screen.keyboardLocked, false);
+
+  const silent: Session = Object.assign(Object.create(Session.prototype), { screen: stub.screen, lastRecordAt: 0 });
+  await silent.settle("Attn", 10);
+
+  const cancelInvite = [0x00, 0x0a, 0x12, 0xa0, 0x00, 0x00, 0x04, 0x00, 0x00, 0x0a];
+  sent.length = 0;
+  Session.prototype["onRecord"].call(stub, Buffer.from(cancelInvite));
+  assert.deepEqual(sent.map((r) => [...r]), [cancelInvite]);
+  assert.equal(stub.screen.keyboardLocked, true);
 });
 
 test("the stack view keeps each screen as it was on top and forgets popped ones", () => {

@@ -2,10 +2,17 @@
 // unlocking the keyboard and then definitively by sending a read command, so nothing here polls.
 
 import { EventEmitter } from "node:events";
-import { CMD, KEY_TO_AID, READ_CMDS, isNondisplay } from "./codes.js";
+import { CMD, KEY_TO_AID, KEYS, OPCODE_CANCEL_INVITE, READ_CMDS, isNondisplay } from "./codes.js";
 import { encode } from "./ebcdic.js";
 import { assertCommandAllowed } from "./guard.js";
-import { buildInbound, buildQueryReply, buildReadScreenReply, buildSaveScreenReply } from "./inbound.js";
+import {
+  buildAttention,
+  buildCancelInviteReply,
+  buildInbound,
+  buildQueryReply,
+  buildReadScreenReply,
+  buildSaveScreenReply,
+} from "./inbound.js";
 import { ScreenBuffer, type Field, type ParsedRecord } from "./screen.js";
 import { lastPaintedRow, messageLine } from "./snapshot.js";
 import { ScreenStack, type Exchange, type Move } from "./stack.js";
@@ -15,6 +22,7 @@ import { NOOP_REPORTER, type Profile, type Reporter } from "./types.js";
 const READ_GRACE_MS = 5;         // a read means the host is waiting, so this only catches a trailing record
 const QUIET_MS = 120;            // for a host that unlocks without a read and splits a paint over records
 const SETTLE_TIMEOUT_MS = 15000;
+const ATTN_GRACE_MS = 1000;
 const POLL_MS = 5;
 
 // CA keys tell the terminal to discard changed data, so typing then F3 loses the input. Correct 5250.
@@ -81,6 +89,10 @@ export class Session extends EventEmitter {
       this.conn.sendRecord(record);
       this.restartSettle();
     };
+    if (rec[9] === OPCODE_CANCEL_INVITE) {
+      this.screen.keyboardLocked = true;
+      reply("Cancel Invite", buildCancelInviteReply());
+    }
     if (parsed.queryRequested) reply("5250 Query", buildQueryReply(this.profile.terminalType, this.encoder));
     if (parsed.saveScreenRequested) reply("Save Screen", buildSaveScreenReply(this.screen));
     if (parsed.readScreenRequested) reply("Read Screen Immediate", buildReadScreenReply(this.screen.chars));
@@ -95,8 +107,9 @@ export class Session extends EventEmitter {
   }
 
   // After a read there is only a grace for a trailing record. Without one the quiet period applies.
-  settle(what = "screen"): Promise<void> {
-    const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+  settle(what = "screen", silentOkMs = 0): Promise<void> {
+    const start = Date.now();
+    const deadline = start + SETTLE_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
       const tick = setInterval(() => {
         if (this.closed) {
@@ -104,7 +117,10 @@ export class Session extends EventEmitter {
           return reject(new Error("the session closed while waiting for the host"));
         }
         const quietFor = this.sawRead ? READ_GRACE_MS : QUIET_MS;
-        const quiet = this.lastRecordAt > 0 && Date.now() - this.lastRecordAt >= quietFor;
+        const quiet =
+          this.lastRecordAt > 0
+            ? Date.now() - this.lastRecordAt >= quietFor
+            : silentOkMs > 0 && Date.now() - start >= silentOkMs;
         if (quiet && !this.screen.keyboardLocked) {
           clearInterval(tick);
           return resolve();
@@ -198,23 +214,27 @@ export class Session extends EventEmitter {
     this.seen = { saved: false, restored: false, cleared: false };
     const name = normaliseKey(key);
     const aid = KEY_TO_AID[name];
-    if (aid === undefined) {
-      throw new Error(`unknown key "${key}". Known: ${Object.keys(KEY_TO_AID).join(", ")}`);
+    if (aid === undefined && name !== "Attn") {
+      throw new Error(`unknown key "${key}". Known: ${KEYS.join(", ")}`);
     }
     const values = [...this.typed.values()].filter(Boolean);
     const selected = values.length > 0 && values.every((v) => /^\d+$/.test(v));
     this.typed.clear();
-    const record = buildInbound(this.screen, aid, {
-      allFields: this.lastReadWasAllFields,
-      suppressFields: CA_KEYS.has(name),
-    });
+    const attn = aid === undefined;
+    const record = attn
+      ? buildAttention()
+      : buildInbound(this.screen, aid, {
+          allFields: this.lastReadWasAllFields,
+          suppressFields: CA_KEYS.has(name),
+        });
     reporter.step(`pressing ${key}`);
     // Lock on send, or the previous screen's unlocked state satisfies settle() immediately.
-    this.screen.keyboardLocked = true;
+    // Not on Attn, which the host may answer with nothing at all.
+    if (!attn) this.screen.keyboardLocked = true;
     this.screen.alarm = false;
     this.restartSettle();
     this.conn.sendRecord(record);
-    await this.settle(`the response to ${key}`);
+    await this.settle(`the response to ${key}`, attn ? ATTN_GRACE_MS : 0);
     this.lastMove = this.stack.observe(this.screen, { key: name, selected, ...this.seen });
     this.emit("moved");
   }
@@ -408,6 +428,7 @@ const KEY_ALIASES: Record<string, string> = Object.assign(Object.create(null), {
   pagedown: "PageDown", pgdn: "PageDown", rollup: "PageDown", next: "PageDown",
   pageup: "PageUp", pgup: "PageUp", rolldown: "PageUp", prev: "PageUp",
   clear: "Clear", help: "Help", print: "Print",
+  attn: "Attn", attention: "Attn",
 });
 
 function normaliseKey(k: string): string {

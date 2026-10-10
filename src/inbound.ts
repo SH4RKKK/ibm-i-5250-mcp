@@ -1,7 +1,7 @@
 // The record that goes back to the host when a key is pressed: which key, where the cursor was, and
 // every field whose modified data tag is set. Nothing goes back until an AID key.
 
-import { CMD, ESC, FFW, GDS, ORDER, SHIFT } from "./codes.js";
+import { ATTR_GREEN, CMD, ESC, FFW, FLAG_ATN, GDS, OPCODE_CANCEL_INVITE, ORDER, SHIFT, isAttribute } from "./codes.js";
 import type { Field, ScreenBuffer } from "./screen.js";
 
 const SAVE_SCREEN_OPCODE = 0x04;
@@ -12,17 +12,25 @@ interface InboundOptions {
 }
 
 // GDS header: 0..1 total length, 2..3 type, 4..5 reserved, 6 header length, 7..8 flags, 9 opcode.
-function gdsRecord(body: Uint8Array | number[], opcode = 0x00): Buffer {
+function gdsRecord(body: Uint8Array | number[], opcode = 0x00, flags = 0): Buffer {
   const b = Buffer.from(body);
   const rec = Buffer.alloc(10 + b.length);
   rec.writeUInt16BE(rec.length, 0);
   rec.writeUInt16BE(GDS, 2);
   rec.writeUInt16BE(0, 4);
   rec[6] = 4;
-  rec.writeUInt16BE(0, 7);
+  rec.writeUInt16BE(flags, 7);
   rec[9] = opcode;
   b.copy(rec, 10);
   return rec;
+}
+
+export function buildAttention(): Buffer {
+  return gdsRecord([], 0x00, FLAG_ATN);
+}
+
+export function buildCancelInviteReply(): Buffer {
+  return gdsRecord([], OPCODE_CANCEL_INVITE);
 }
 
 // Row and column travel as single bytes, so a wild value would corrupt the record silently.
@@ -93,16 +101,26 @@ export function buildSaveScreenReply(screen: ScreenBuffer): Buffer {
   const body: number[] = [ESC];
   if (screen.cols === 80) body.push(CMD.CLEAR_UNIT);
   else body.push(CMD.CLEAR_UNIT_ALTERNATE, 0x00);
-  body.push(ESC, CMD.WRITE_TO_DISPLAY, 0x00, 0x00, ORDER.SBA, 1, 1);
+  body.push(ESC, CMD.WRITE_TO_DISPLAY, 0x00, 0x00);
+  if (screen.startOfHeader.length) body.push(ORDER.SOH, ...screen.startOfHeader);
+  body.push(ORDER.SBA, 1, 1);
 
   // A field's attribute lives in the cell before its data, and Start Field writes that cell itself.
   const starts = new Map<number, Field>();
   for (const f of screen.fields) starts.set((f.row - 1) * screen.cols + f.col - 2, f);
 
+  let attr = ATTR_GREEN;
   for (let p = 0; p < screen.chars.length; p++) {
     const f = starts.get(p);
-    if (f) body.push(ORDER.SF, ffw1(f), ffw2(f), f.attr, f.length >> 8, f.length & 0xff);
-    else body.push(screen.chars[p]);
+    if (f) {
+      body.push(ORDER.SF, ffw1(f), ffw2(f), f.attr, f.length >> 8, f.length & 0xff);
+      attr = f.attr;
+      continue;
+    }
+    // The host skips cells it never wrote, so a sequential replay ends the attribute in a null cell.
+    const c = screen.chars[p] === 0x00 && screen.attrs[p] !== attr ? screen.attrs[p] : screen.chars[p];
+    if (isAttribute(c)) attr = c;
+    body.push(c);
   }
   body.push(ORDER.IC, clampByte(screen.cursorRow), clampByte(screen.cursorCol));
   return gdsRecord(body, SAVE_SCREEN_OPCODE);

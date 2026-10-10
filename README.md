@@ -231,12 +231,14 @@ so "open a session on PROD" loads `.env.PROD`. Say nothing about a box and it us
   | Action | Does |
   |---|---|
   | `type f1: ACME LTD` | put text in a field, by ref, by `row,col`, or by DDS name once known |
-  | `key: Enter` | Enter, F1 to F24, PageUp, PageDown, Help, Clear, Print |
+  | `key: Enter` | Enter, F1 to F24, PageUp, PageDown, Help, Clear, Print, Attn |
   | `cursor: 6,53` | move the cursor before the key |
 
   Cursor position is an argument to the key, which is why it has its own action: Help on a message
-  line explains that message, Help anywhere else explains the field under it. If an action fails the
-  run stops there, and the error names the action and returns the screen as it stands.
+  line explains that message, Help anywhere else explains the field under it. Attn is the Attention
+  key, which ACS usually puts on Esc: it runs the job's attention program, if the job has one. If an
+  action fails the run stops there, and the error names the action and returns the screen as it
+  stands.
 - **`screen_snapshot`**: the current screen, changing nothing.
 
 ### Tests

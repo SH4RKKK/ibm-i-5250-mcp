@@ -120,6 +120,10 @@ export const AID = {
   PRINT: 0xf6,
 } as const;
 
+export const FLAG_ATN = 0x4000;
+
+export const OPCODE_CANCEL_INVITE = 0x0a;
+
 export const KEY_TO_AID: Record<string, number> = Object.assign(Object.create(null), {
   Enter: AID.ENTER,
   F1: AID.F1, F2: AID.F2, F3: AID.F3, F4: AID.F4, F5: AID.F5, F6: AID.F6,
@@ -132,3 +136,5 @@ export const KEY_TO_AID: Record<string, number> = Object.assign(Object.create(nu
   Help: AID.HELP,
   Print: AID.PRINT,
 });
+
+export const KEYS = [...Object.keys(KEY_TO_AID), "Attn"];
